@@ -23,6 +23,7 @@ set(RAPIDFUZZ ${TP}/rapidfuzz)
 
 add_executable(excel_search
     main.cpp
+widgets.cpp
 animations.cpp
 theme.cpp
     app_icon.qrc         # 内嵌 app.ico（托盘/任务栏/资源管理器 三处图标统一）
