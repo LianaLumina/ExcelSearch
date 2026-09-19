@@ -87,6 +87,7 @@
 #include "miniz.h"
 #include "common.h"
 #include "theme.h"
+#include "animations.h"
 
 
 // ============================================================================
@@ -106,77 +107,24 @@
 // ★回迁注意：动效与 makeProto()/qssFor() 的令牌强绑定，回迁时要么整段搬走、要么整段不搬，
 //   不要只搬一半（只搬画面不搬令牌会出现"深浅色下颜色对不上"）。详见 docs/回迁标注.md 第 19/20 条。
 // ============================================================================
-static bool g_noAnim = false;              // true = 关闭全部动效（UI_PROTO_NO_ANIM=1 / --no-anim）
-static inline int animMs(int ms) { return g_noAnim ? 0 : ms; }
 
 // —— 动效令牌：时长档位（所有效果只许用这三档，层次感来自档位差而不是随手取值）——
-static const int kDurMicro  = 90;          // 微反馈：按下 / 图标抖动的起步
-static const int kDurBase   = 160;         // 标准：页面 / 分区 / 折叠
-static const int kDurSlow   = 240;         // 强调：数值滚动 / 结果区入场
 // —— 错峰（stagger）：现代感的来源——不是所有东西同时动，而是"容器先到、内容随后"——
-static const int kStaggerMs     = 40;      // 父子错峰步进
-static const int kRowStaggerMs  = 20;      // 结果表行错峰步进
-static const int kRowStaggerMax = 8;       // 参与错峰的最大行数（再多的行直接落终态）
 // —— 各效果时长（都由上面的档位表达）——
-static const int kPageAnimMs   = kDurBase;      // 顶部标签切换：淡入 + 位移
-static const int kSecAnimMs    = 150;           // 设置分区 / 高级设置解锁层切换
-static const int kEnterSlidePx = 8;             // 切入位移幅度（px）
-static const int kCardAnimMs   = 180;           // 可折叠卡片：展开 / 收起高度动画
-static const int kHoverAnimMs  = 120;           // hover：底色 / 圆角过渡
-static const int kPressAnimMs  = kDurMicro;     // 按下 / 抬起
-static const int kFocusAnimMs  = 140;           // 输入框焦点边框过渡
-static const int kCountAnimMs  = 420;           // 数值滚动
-static const int kToastAnimMs  = 150;           // toast 淡入 / 淡出
-static const int kToastRisePx  = 10;            // toast 上浮幅度（px）
-static const int kSettleMs     = 760;           // 截图/自检等待上限（覆盖最长的一条动效链）
-static const int kLoadBarMinMs = 260;           // 加载细条"最短显示窗口"：缓存命中的瞬时加载也给一次扫过
 
 // —— 曲线库：三类曲线一处定义，全项目共用（改这里 = 全局动效性格一起变）——
 // 用 cubic-bezier / 自定义弹簧表达，零依赖（只用到 QEasingCurve 自带能力）。
 // enter（EmphasizedDecel，Material 3 的"进场"曲线）：起步快、尾巴长 → 比 OutCubic 更"利落又不生硬"
-static inline QEasingCurve curveEnter() {
-    QEasingCurve c;
-    c.addCubicBezierSegment(QPointF(0.05, 0.7), QPointF(0.1, 1.0), QPointF(1.0, 1.0));
-    return c;
-}
 // standard（Standard，位移/颜色通用）：两端都平滑，适合"从 A 状态到 B 状态"
-static inline QEasingCurve curveStandard() {
-    QEasingCurve c;
-    c.addCubicBezierSegment(QPointF(0.2, 0.0), QPointF(0.0, 1.0), QPointF(1.0, 1.0));
-    return c;
-}
 // exit（EmphasizedAccel）：起步慢、尾巴快 → 退出动作"化开走掉"，不拖泥带水
-static inline QEasingCurve curveExit() {
-    QEasingCurve c;
-    c.addCubicBezierSegment(QPointF(0.3, 0.0), QPointF(0.8, 0.15), QPointF(1.0, 1.0));
-    return c;
-}
 // count（数值滚动专用，OutExpo）：起步极快、尾巴很长 —— 数字用它比位移曲线更有"滚上去"的观感；
 // 它不表达物理位移，所以不跟位移类共用曲线。
 static inline QEasingCurve curveCount() { return QEasingCurve(QEasingCurve::OutExpo); }
 // spring（二阶阻尼，ζ=0.7 / ω=16）：约 4.6% 过冲、峰值在过程 30% 处 → 有生命力但不夸张。
 // 只用在**位置/旋转**这类能表达"过冲"的属性上；颜色一律不用弹簧（颜色过冲会看成闪）。
-static inline QEasingCurve curveSpring() {
-    QEasingCurve c;
-    c.setCustomType([](qreal t) -> qreal {
-        if (t <= 0.0) return 0.0;
-        if (t >= 1.0) return 1.0;
-        const qreal zeta = 0.7, omega = 16.0;
-        const qreal wd = omega * std::sqrt(1.0 - zeta * zeta);
-        return 1.0 - std::exp(-zeta * omega * t) * (std::cos(wd * t) + (zeta * omega / wd) * std::sin(wd * t));
-    });
-    return c;
-}
 
 // 令牌色线性插值（含 alpha）：自绘控件与"QSS 覆盖"两条路径共用它，
 // 保证动画两端点颜色一定来自 Proto，不会出现中间态硬编码色。
-static inline QColor mixColor(const QColor& a, const QColor& b, qreal t) {
-    t = qBound(0.0, t, 1.0);
-    return QColor::fromRgbF(a.redF() + (b.redF() - a.redF()) * t,
-                            a.greenF() + (b.greenF() - a.greenF()) * t,
-                            a.blueF() + (b.blueF() - a.blueF()) * t,
-                            a.alphaF() + (b.alphaF() - a.alphaF()) * t);
-}
 // 半透明令牌色写进 QSS 必须用 rgba()：QColor::name() 会丢掉 alpha。
 // 注：hover 过渡是**全程不透明**的（见 backDropOf），这个函数留给以后需要半透明底色的场景。
 [[maybe_unused]] static inline QString rgbaCss(const QColor& c) {
@@ -194,125 +142,18 @@ static inline QColor mixColor(const QColor& a, const QColor& b, qreal t) {
 // 用法：动画期间挂上，结束立刻摘掉（长期挂着会改渲染路径、伤性能）。
 // 关闭动效时根本不安装 —— 渲染路径与动效前逐像素一致。
 // ============================================================================
-class FadeSlideEffect : public QGraphicsEffect {
-public:
-    // 一帧一次：opacity 0..1，dx/dy 为位移像素（正 = 向右/向下，即"从更远处滑进来"）
-    void setFrame(qreal opacity, qreal dx, qreal dy) {
-        if (qFuzzyCompare(m_opacity + 1.0, opacity + 1.0) && qFuzzyCompare(m_dx + 1.0, dx + 1.0)
-            && qFuzzyCompare(m_dy + 1.0, dy + 1.0)) return;
-        m_opacity = opacity; m_dx = dx; m_dy = dy;
-        update();
-    }
-protected:
-    void draw(QPainter* painter) override {
-        if (m_opacity <= 0.001) return;
-        // 位移在 effect 内部完成：boundingRectFor 不改，所以画面边缘被自然裁掉——
-        // 正好就是"内容从下/上滑入、超出部分先不见"的效果。
-        QPoint off;
-        const QPixmap pm = sourcePixmap(Qt::LogicalCoordinates, &off, QGraphicsEffect::PadToEffectiveBoundingRect);
-        painter->save();
-        painter->setOpacity(m_opacity);
-        painter->drawPixmap(off + QPoint(qRound(m_dx), qRound(m_dy)), pm);
-        painter->restore();
-    }
-private:
-    qreal m_opacity = 1.0, m_dx = 0.0, m_dy = 0.0;
-};
 
 // 子控件进入动效：淡入 + 轻微位移（curveEnter）。
 //   dyPx  ：位移幅度（正 = 从下方滑入；负 = 从上方滑入；0 = 只淡入）
 //   child ：可选"随后到"的子控件 —— 容器先到约 30%，内容再淡入（层级因果，现代感的来源）
 // 关闭动效（dur<=0）时**什么都不做**：终态本就"没有位移、没有 effect"。
-static void enterAnim(QWidget* w, int ms, qreal dyPx = kEnterSlidePx, QWidget* child = nullptr) {
-    if (!w) return;
-    const int dur = animMs(ms);
-    if (dur <= 0) return;
-    auto* eff = new FadeSlideEffect;
-    eff->setFrame(0.0, 0.0, dyPx);
-    w->setGraphicsEffect(eff);
-    FadeSlideEffect* childEff = nullptr;
-    if (child) {
-        childEff = new FadeSlideEffect;
-        childEff->setFrame(0.0, 0.0, dyPx * 0.75);
-        child->setGraphicsEffect(childEff);
-    }
-    auto* a = new QVariantAnimation(eff);
-    a->setDuration(dur);
-    a->setEasingCurve(curveEnter());
-    a->setStartValue(0.0);
-    a->setEndValue(1.0);
-    QObject::connect(a, &QVariantAnimation::valueChanged, eff, [eff, childEff, dyPx](const QVariant& v) {
-        const qreal p = v.toDouble();
-        eff->setFrame(p, 0.0, (1.0 - p) * dyPx);
-        if (childEff) {   // 内容随后到：容器走到 30% 才开始，用标准曲线收尾
-            const qreal cp = curveStandard().valueForProgress(qBound(0.0, (p - 0.3) / 0.7, 1.0));
-            childEff->setFrame(cp, 0.0, (1.0 - cp) * dyPx * 0.75);
-        }
-    });
-    QObject::connect(a, &QVariantAnimation::finished, w, [w, eff, child, childEff] {
-        // 延迟一拍再摘：此刻仍在 finished 回调里，直接删 effect 会把它的子动画一起删掉。
-        // 用 identity 判断避开"动画中途又被新动画顶掉"的情况。
-        QTimer::singleShot(0, w, [w, eff, child, childEff] {
-            if (w->graphicsEffect() == eff) w->setGraphicsEffect(nullptr);
-            if (child && child->graphicsEffect() == childEff) child->setGraphicsEffect(nullptr);
-        });
-    });
-    a->start();
-}
 
 // 一次性抖动（用于"密码错误"这类明确的失败反馈）：横向阻尼振荡后归位，不碰布局。
 // 挂在控件的 FadeSlideEffect 上做，因此和淡入/位移共用同一套机制。
-static void shakeAnim(QWidget* w, qreal amp = 6.0, int ms = 260, qreal cycles = 2.5) {
-    if (!w) return;
-    const int dur = animMs(ms);
-    if (dur <= 0) return;
-    auto* eff = new FadeSlideEffect;
-    w->setGraphicsEffect(eff);
-    auto* a = new QVariantAnimation(eff);
-    a->setDuration(dur);
-    a->setEasingCurve(QEasingCurve::Linear);   // 阻尼振荡的形状由公式给，不再叠曲线
-    a->setStartValue(0.0);
-    a->setEndValue(1.0);
-    QObject::connect(a, &QVariantAnimation::valueChanged, eff, [eff, amp, cycles](const QVariant& v) {
-        const qreal t = v.toDouble();
-        const qreal dx = amp * std::sin(2.0 * M_PI * cycles * t) * (1.0 - t);   // 振幅随时间衰减
-        eff->setFrame(1.0, dx, 0.0);
-    });
-    QObject::connect(a, &QVariantAnimation::finished, w, [w, eff] {
-        QTimer::singleShot(0, w, [w, eff] { if (w->graphicsEffect() == eff) w->setGraphicsEffect(nullptr); });
-    });
-    a->start();
-}
 
 // 自绘控件的 hover 进度驱动：0 ↔ 1 的 QVariantAnimation（默认 standard 曲线），每帧回调 apply(v)。
 // 关闭动效时直接落终态（0 或 1），因此在事件循环里不留任何定时器。
 // curve 可换：位置/旋转类属性用 curveSpring()，颜色类一律用 curveStandard()（颜色过冲会被看成"闪"）。
-struct HoverT {
-    qreal v = 0.0;
-    QVariantAnimation* anim = nullptr;
-    void to(QObject* owner, bool on, const std::function<void(qreal)>& apply, QEasingCurve curve = curveStandard()) {
-        const int dur = animMs(kHoverAnimMs);
-        if (dur <= 0) {
-            if (anim) anim->stop();
-            v = on ? 1.0 : 0.0;
-            apply(v);
-            return;
-        }
-        if (!anim) {
-            anim = new QVariantAnimation(owner);
-            QObject::connect(anim, &QVariantAnimation::valueChanged, owner, [this, apply](const QVariant& x) {
-                v = x.toDouble();
-                apply(v);
-            });
-        }
-        anim->setEasingCurve(curve);
-        anim->stop();
-        anim->setDuration(dur);
-        anim->setStartValue(v);
-        anim->setEndValue(on ? 1.0 : 0.0);
-        anim->start();
-    }
-};
 
 struct Doc { std::string fn; std::vector<SheetData> sheets; };
 
@@ -549,10 +390,6 @@ signals:
 // ★回迁注意：按钮若挪到别的容器（不是 #panel / #card），这里要跟着补容器判定。
 // 取出容器里"随后到"的内容控件（cardFrame 建卡片时登记在 animChild 属性上）。
 // 用于父子错峰：容器先到、内容延迟 kStaggerMs 再淡入 —— 层级因果比"一起淡入"清楚得多。
-static QWidget* animChildOf(QWidget* w) {
-    if (!w) return nullptr;
-    return qobject_cast<QWidget*>(w->property("animChild").value<QObject*>());
-}
 
 
 // 自绘文件夹图标按钮（替换原来的「导出 xlsx」文字按钮）：
@@ -1725,13 +1562,6 @@ private:
 };
 
 // 给一个列表装上行 hover 过渡（沿用 MarkBarDelegate 的用法：只补画，不改默认绘制）
-static void enableRowHoverAnim(QListWidget* list, const Proto& p, std::vector<RowDelegate*>* reg) {
-    if (!list) return;
-    auto* d = new RowDelegate(list, p);
-    d->setRounded(true);
-    list->setItemDelegate(d);
-    if (reg) reg->push_back(d);
-}
 // 注：原 `MarkBarDelegate` 的"行首标记色条"职责已并入上面的 RowDelegate（绘制逻辑一字未改），
 //     保留这段指向是为了让回迁时能对上 docs/回迁标注.md 第 7 条里提到的类名。
 
@@ -1752,6 +1582,15 @@ static void enableRowHoverAnim(QListWidget* list, const Proto& p, std::vector<Ro
 // ============================================================================
 static const bool kEnableUtilTab = false;          // ← 预留开关：当前明确不启用
 static QString utilTabTitle() { return T("实用工具"); }
+
+// 行悬停动效：需要 RowDelegate 的完整定义，故留在本文件（跟随 RowDelegate 一起拆分）
+static void enableRowHoverAnim(QListWidget* list, const Proto& p, std::vector<RowDelegate*>* reg) {
+    if (!list) return;
+    auto* d = new RowDelegate(list, p);
+    d->setRounded(true);
+    list->setItemDelegate(d);
+    if (reg) reg->push_back(d);
+}
 
 class AppWindow : public QWidget {
     bool m_dark = false;

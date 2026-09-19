@@ -23,6 +23,7 @@ set(RAPIDFUZZ ${TP}/rapidfuzz)
 
 add_executable(excel_search
     main.cpp
+animations.cpp
 theme.cpp
     app_icon.qrc         # 内嵌 app.ico（托盘/任务栏/资源管理器 三处图标统一）
     manual.qrc           # 内嵌 MANUAL.md（外部文件缺失时的兜底）
