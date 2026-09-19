@@ -254,7 +254,7 @@ rects=chk:314,527,134x18;btn:458,521,108x31;view:204,54,660x457
   截图英文化、`docs/历史` → `docs/archive`、`docs/原型期存档` → `docs/prototype-archive`、
   `data/回归测试_*` → `data/regression-*`。
 - **版本串与提交信息**：`CHANGELOG.md` 标题 `## V0.3.2 — Qt6 界面重写版` → `## V0.3.2`，README 版本行同步去后缀；
-  首个提交信息 `V0.3.2: Qt6 界面重写版（首个开源版本）` → **`V0.3.2`**，其余提交统一 `feat/fix/docs/chore` 前缀。
+  首个提交信息 `V0.3.2: Qt6 界面重写版（首个开源版本）` → **`V0.3.2`**，其余提交使用简短的中文说明（按所涉文件的作用描述）。
 - **鸣谢措辞修正（因该轮复核发现原措辞不够准确）**：原写"仅为视觉风格参考"，但说明书弹窗的**交互方式**
   是刻意对齐 MAA 公告框的 → 已在 README、`licenses/THIRD-PARTY-NOTICES.md`、`MANUAL.md`、`CHANGELOG.md`
   与 `docs/LICENSE-COMPLIANCE.md`（新增**指纹 4** 逐条比对表）统一改为
