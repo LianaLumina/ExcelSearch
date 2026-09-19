@@ -1316,7 +1316,7 @@ class ManualDialog : public QWidget {
 public:
     ManualDialog(bool dark, const QColor& accent, const QString& md, std::function<void(bool)> onClosed, QWidget* parent = nullptr)
         : QWidget(parent), m_onClosed(std::move(onClosed)) {
-        setWindowFlags(Qt::Window);            // 独立顶层窗口：有任务栏条目、可最小化/最大化
+        setWindowFlags(Qt::Window | Qt::FramelessWindowHint);   // 独立顶层窗口；无边框（自绘标题区，与主界面一致，不出现原生标题栏）
         setAttribute(Qt::WA_TranslucentBackground);
         setWindowTitle(T("使用说明书"));
         setStyleSheet(qssFor(makeProto(dark, accent)));
@@ -1388,6 +1388,16 @@ public:
         sb->setValue(sb->maximum());
         checkScrolled();
     }
+    bool testTryClose() { tryClose(); return !isVisible(); }   // 供自检：确认按钮是否真的关掉了窗口
+    // 供自检：控件在窗口内的相对位置（便于自动化点击；坐标系与 --report 的窗口一致）
+    QString relRects() const {
+        auto rel = [this](const QWidget* w) {
+            if (!w) return QStringLiteral("-");
+            const QPoint p = w->mapTo(this, QPoint(0, 0));
+            return QStringLiteral("%1,%2,%3x%4").arg(p.x()).arg(p.y()).arg(w->width()).arg(w->height());
+        };
+        return QStringLiteral("chk:%1;btn:%2;view:%3").arg(rel(m_noRemind)).arg(rel(m_btn)).arg(rel(m_view));
+    }
     // 供自检：目录栏里是否有标题被省略号截断（横向滚动条已关闭 → 截断就等于看不全）
     QString navReport() const {
         if (!m_list) return QStringLiteral("none");
@@ -1403,12 +1413,17 @@ public:
     // 供自检：窗口形态（独立顶层窗口 + 右上角是最大化按钮 + 两条滚动条都关闭 + 复选文案）
     QString modeReport() const {
         const bool top = (windowType() == Qt::Window);   // 独立顶层窗口（Qt::Dialog 含 Window 位，不能用位与判断）
+        const bool frameless = (windowFlags() & Qt::FramelessWindowHint) != 0;
+        const QRect fg = frameGeometry(), geo = geometry();
         return QStringLiteral("%1,btn=%2,viewhbar=%3,listhbar=%4,chk=%5")
             .arg(top ? QStringLiteral("toplevel") : QStringLiteral("NOT-toplevel"))
             .arg(m_maxBtn ? QStringLiteral("max") : QStringLiteral("none"))
             .arg(m_view ? (m_view->horizontalScrollBarPolicy() == Qt::ScrollBarAlwaysOff ? QStringLiteral("off") : QStringLiteral("on")) : QStringLiteral("?"))
             .arg(m_list ? (m_list->horizontalScrollBarPolicy() == Qt::ScrollBarAlwaysOff ? QStringLiteral("off") : QStringLiteral("on")) : QStringLiteral("?"))
-            .arg(m_noRemind ? m_noRemind->text() : QString());
+            .arg(m_noRemind ? m_noRemind->text() : QString())
+            + QStringLiteral(",frameless=%1,frameDelta=%2x%3")
+                  .arg(frameless ? QStringLiteral("yes") : QStringLiteral("no"))
+                  .arg(fg.width() - geo.width()).arg(fg.height() - geo.height());
     }
 protected:
     void closeEvent(QCloseEvent* e) override {   // 关闭也受门禁约束（Alt+F4 同样拦住）
@@ -2101,6 +2116,7 @@ public:
         QCoreApplication::processEvents();
         const QString g1 = QStringLiteral("chk=%1,gate=%2")
             .arg(dlg.testChkEnabled() ? 1 : 0).arg(dlg.testGateOpen() ? 1 : 0);
+        const QString rects = dlg.relRects();
         const QRect normal = dlg.geometry();
         dlg.testToggleMax();   // 最大化 → 应等于屏幕可用区域（不盖任务栏）
         QCoreApplication::processEvents();
@@ -2109,6 +2125,7 @@ public:
         dlg.testToggleMax();   // 还原 → 应回到原尺寸
         QCoreApplication::processEvents();
         const QRect back = dlg.geometry();
+        const bool closed = dlg.testTryClose();   // 读到底后点确认应当真的关掉（放最后，关窗后不再操作）
         dlg.hide();
         return mode + QStringLiteral("|nav=") + r
             + QStringLiteral("|normal=%1x%2").arg(normal.width()).arg(normal.height())
@@ -2117,7 +2134,9 @@ public:
             + QStringLiteral("|maxEqAvail=%1").arg(maxed == avail && !avail.isEmpty() ? QStringLiteral("yes") : QStringLiteral("no"))
             + QStringLiteral("|restore=%1x%2").arg(back.width()).arg(back.height())
             + QStringLiteral("|gate0=[%1]").arg(g0) + QStringLiteral("|nag=[%1]").arg(nag)
-            + QStringLiteral("|gateRead=[%1]").arg(g1);
+            + QStringLiteral("|gateRead=[%1]").arg(g1)
+            + QStringLiteral("|closedAfterRead=%1").arg(closed ? 1 : 0)
+            + QStringLiteral("|rects=") + rects;
     }
     QPixmap demoCloseDialogPixmap() {
         CloseDialog d(m_dark, m_accent, this);
