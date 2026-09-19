@@ -39,7 +39,8 @@
 
 - **回迁尚未开始**。用户 2026-09 明确："先别开始，我还有事要安排"。
 - **暂停原因（当前）**：等用户装完 **7-Zip**（用于回迁后的还原点归档）后再继续。
-  ⚠️ 归档需要 **7-Zip**（Windows 自带的 `tar.exe` / `Compress-Archive` 只能出 .zip，生不成 .7z）。`r`n  详见 `docs/prototype-archive/migration-cleanup-plan.md`。
+  ⚠️ 归档需要 **7-Zip**（Windows 自带的 `tar.exe` / `Compress-Archive` 只能出 .zip，生不成 .7z）。
+  详见 `docs/prototype-archive/migration-cleanup-plan.md`。
 - **本轮已拍板的三项决定**：
   1. **迁移落点**：新建 `<repo>`（拷 `V0.3.0` 作底 + 换掉 Win32 UI）。
      理由：原程序 `<workspace>` **没有任何版本控制**（.git 不存在），新建目录 = 天然还原点。
