@@ -5,17 +5,17 @@
 #   powershell -ExecutionPolicy Bypass -File tools\smoke.ps1
 #   powershell -ExecutionPolicy Bypass -File tools\smoke.ps1 -Rows 50000   # 调整大文件行数
 # 产物：
-#   <smoke-dir>\bin\data\...   隔离数据集（含坏文件与 10 万行 CSV）
+#   <隔离目录>\bin\data\...        隔离数据集（含坏文件与 10 万行 CSV），默认 %TEMP%\excelsearch-smoke
 #   %TEMP%\smoke-*.txt            各步输出
 # 注意：
 #   - 会覆盖 %APPDATA%\ui_proto\ExcelSearch\cache.*（缓存是按数据清单重新生成的）；
 #     跑完请用真实 exe 跑一次 --report 把用户数据的缓存重建回来。
 #   - 绝不执行 --clearmarks（会清掉用户配置里的屏蔽/标记）。
 param(
-    [string]$Exe     = "<repo>\build\bin\excel_search.exe",
-    [string]$Root    = "<smoke-dir>",
+    [string]$Exe     = (Join-Path $PSScriptRoot '..\build\bin\excel_search.exe'),
+    [string]$Root    = (Join-Path $env:TEMP 'excelsearch-smoke'),
     [int]   $Rows    = 100000,
-    [string]$RealData = "<repo>\build\bin\data"
+    [string]$RealData = (Join-Path $PSScriptRoot '..\build\bin\data')
 )
 $ErrorActionPreference = "Stop"
 $env:QT_QPA_PLATFORM = "offscreen"

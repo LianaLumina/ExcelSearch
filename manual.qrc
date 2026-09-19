@@ -1,7 +1,7 @@
 <!DOCTYPE RCC><RCC version="1.0">
-<!-- 使用说明书内嵌副本：exe 旁若有「使用说明书.md」则优先用外部文件（可替换、免重编），
+<!-- 使用说明书内嵌副本：exe 旁若有「MANUAL.md」则优先用外部文件（可替换、免重编），
      否则回退到本内嵌副本。 -->
 <qresource prefix="/">
-    <file alias="manual.md">使用说明书.md</file>
+    <file alias="manual.md">MANUAL.md</file>
 </qresource>
 </RCC>

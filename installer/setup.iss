@@ -1,4 +1,4 @@
-﻿; Excel 表格关键字搜索工具 V0.3.2 安装脚本（Inno Setup 6）
+; Excel 表格关键字搜索工具 V0.3.2 安装脚本（Inno Setup 6）
 ; ---------------------------------------------------------------------------
 ; 前置：先跑 tools\deploy.ps1 生成部署目录 ..\build\deploy\（exe + Qt DLL + 插件 + licenses + 空 data）
 ; 用法："C:\Program Files (x86)\Inno Setup 6\ISCC.exe" setup.iss
@@ -64,9 +64,9 @@ Name: "taskbaricon";   Description: "创建任务栏快捷方式"; GroupDescript
 Name: "{app}\data"; Permissions: users-modify
 
 [Files]
-; 整个部署产物（exe + Qt DLL + 插件 + licenses）——由 tools\deploy.ps1 生成
+; 整个部署产物（exe + Qt DLL + 插件 + licenses + MANUAL.md）——由 tools\deploy.ps1 生成
 Source: "{#DeployDir}\*"; DestDir: "{app}"; Flags: ignoreversion recursesubdirs createallsubdirs
-; 注意：**不含使用说明书.txt**（旧版说明书描述的是旧界面，等下一版重建后再加入）
+; 说明：MANUAL.md（使用说明书正文）随部署产物一并安装到 {app}\，程序优先读取它、缺失时回退到内嵌副本。
 
 [Icons]
 Name: "{group}\{#MyAppName}";        Filename: "{app}\{#MyAppExeName}"; Tasks: startmenuicon

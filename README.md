@@ -3,7 +3,7 @@
 把 Excel / Word / CSV 表格放进 `data` 目录，即可对**全部表格内容**做关键字检索，
 配合二级筛选、屏蔽与标记，用来在成百上千份工程表格里快速定位目标行。
 
-- **版本**：V0.3.2（Qt6 重写版；本仓库即为该版本源码）
+- **版本**：V0.3.2
 - **作者 / 发行者**：觉心恋影
 - **许可证**：**GNU GPL-3.0**（见 [LICENSE](LICENSE)）
 - **界面**：Qt 6 Widgets + 自绘 QSS —— 无边框窗口、深浅双主题、可一键关闭的控件动效
@@ -14,7 +14,7 @@
 
 | 搜索页（浅色） | 设置页（深色） | 使用说明书（浅色） |
 |---|---|---|
-| ![搜索页](docs/images/搜索页-浅色.png) | ![设置页](docs/images/设置页-深色.png) | ![使用说明书](docs/images/说明书窗口-浅色.png) |
+| ![搜索页](docs/images/search-light.png) | ![设置页](docs/images/settings-dark.png) | ![使用说明书](docs/images/manual-light.png) |
 
 > 截图由程序自带的离屏截图钩子生成（`--shot`），与运行时界面一致。
 
@@ -190,7 +190,7 @@ core/                跨平台基础（文件 IO、加密接口）
 pinyin.*             拼音/简拼匹配
 thirdparty/          miniz / pugixml / libxls / win_iconv / rapidfuzz
 licenses/            第三方许可清单与声明（许可证全文随发行包分发）
-docs/                开源合规核查等文档
+docs/                验证报告 / 合规核查 / 归档文档
 tools/               部署、自检、冒烟脚本
 installer/           Inno Setup 安装脚本
 app_qt.rc            版本资源（版本号 / 图标 / 清单）
@@ -205,16 +205,18 @@ miniz(MIT) / pugixml(MIT) / rapidfuzz(MIT) / libxls(BSD) / win_iconv(Public Doma
 **各许可证全文**由 `tools/deploy.ps1` 在打包时自动从构建环境收集，随发行包放在安装目录的
 `licenses/`（含 `Qt-LGPL-3.0-only.txt`、`MIT.txt`、`BSD-2-Clause.txt` 等，另附 `BUNDLED-LIBRARIES.txt` 依赖清单）。
 
-界面**视觉风格**参考了 [MAA / MaaWpfGui](https://github.com/MaaAssistantArknights/MaaAssistantArknights)
-与 [MaaEnd](https://github.com/MaaEnd/MaaEnd) —— **仅为风格参考，未使用其任何代码或资源**；
-核查过程与证据见 [`docs/开源合规核查.md`](docs/开源合规核查.md)。
+界面**视觉风格**与**说明书弹窗的交互方式**（读到底才能关闭、未读完点「确认」会被拦下、
+「下次更新前不再展示」的记忆语义）参考了 [MAA / MaaWpfGui](https://github.com/MaaAssistantArknights/MaaAssistantArknights)
+与 [MaaEnd](https://github.com/MaaEnd/MaaEnd)。二者均为 **AGPL-3.0** 项目，本项目**未使用、未复制其任何
+源代码、样式表、XAML 或资源文件**——界面与弹窗均为本项目自有的 C++/Qt 实现，此处为出于尊重的自愿致谢；
+核查过程与证据见 [`docs/LICENSE-COMPLIANCE.md`](docs/LICENSE-COMPLIANCE.md)。
 
 ## 文档
 
 | 文档 | 说明 |
 |---|---|
 | [`CHANGELOG.md`](CHANGELOG.md) | 版本改动记录（自 V0.3.2 起） |
-| [`docs/V0.3.2_验证报告.md`](docs/V0.3.2_验证报告.md) | 本版交付验证报告（构建 / 部署 / 安装包 / 功能 / 性能实测） |
-| [`docs/开源合规核查.md`](docs/开源合规核查.md) | 开源合规性核查记录（含 MAA / MaaEnd 使用核查） |
-| [`docs/原型期存档/`](docs/原型期存档/) | Qt 原型期的设计与迁移记录（回迁清单、动效设计、缓存验证、冒烟报告等） |
-| [`docs/历史/`](docs/历史/) | V0.3.0（Win32 版）时期文档，仅作沿革参考 |
+| [`docs/VERIFICATION.md`](docs/VERIFICATION.md) | 本版交付验证报告（构建 / 部署 / 安装包 / 功能 / 性能实测） |
+| [`docs/LICENSE-COMPLIANCE.md`](docs/LICENSE-COMPLIANCE.md) | 开源合规性核查记录（含 MAA / MaaEnd 使用核查） |
+| [`docs/prototype-archive/`](docs/prototype-archive/) | Qt 原型期的设计与迁移记录（回迁清单、动效设计、缓存验证、冒烟报告等） |
+| [`docs/archive/`](docs/archive/) | V0.3.0（Win32 版）时期文档，仅作沿革参考 |

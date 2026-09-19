@@ -47,7 +47,7 @@ tray=off(离屏)  anim=off|on
 ```
 - **`skipped` 由 1 变 0**：`data\` 现在只剩 **5 个文件**（`.xlsx`×3 + `.docx`×1 + `.xse`×1）。
   被删掉的是 `105大修工日审查电气（初版）中核检修.xse` —— 它**正是原来那条被附加密码跳过的文件**；
-  留下的 `回归测试_多表.xse` 是正常文件。所以 `files=5 / entries=43846` 不变、`skipped` 1→0。
+  留下的 `regression-multisheet.xse` 是正常文件。所以 `files=5 / entries=43846` 不变、`skipped` 1→0。
 - **强调色不再是蓝色**：当前 `accent=#f59e0b`（橙），是**用户自己在真机上改的**（动效实例从不写配置）。
   基线截图里的颜色随用户设置变化，**不要硬编码 `#326cf3` 去比对**。
 - 用户配置里另有：7 条屏蔽 + 1 条标记 + `dark=true` + `closeAction=ask`（**不要用 `--clearmarks`**）。

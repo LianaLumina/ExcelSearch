@@ -1260,15 +1260,18 @@ private:
 //   · **必须滚动到底**才能关闭；未读到底时点确认会依次出现几句调侃，连续点 20 次以上才放行；
 //   · 勾「下次说明书更新前不再显示」→ 记住当前内容版本，**内容更新后自动恢复提示**；
 //   · 「设置 → 通用设置」另有永久开关（对应 MAA 的「不显示公告」）。
-// 内容来源：exe 同目录的 `使用说明书.md`（可外部替换，无需重编译）→ 缺省用内嵌副本 :/manual.md
+// 内容来源：exe 同目录的 `MANUAL.md`（可外部替换，无需重编译）→ 缺省用内嵌副本 :/manual.md
 // 装饰图片接口：exe 同目录放 `说明书插图.png` 即自动显示（未放则留白）。
 // ============================================================================
 static const char* kManualNags[3] = {
     "还没看完呢，往下翻翻～", "后面还有内容，别急着关～", "真的不看一下吗？就一点点～"
 };
 static QString manualText() {
-    QFile f(QCoreApplication::applicationDirPath() + "/使用说明书.md");
-    if (f.exists() && f.open(QIODevice::ReadOnly)) return QString::fromUtf8(f.readAll());
+    // exe 同目录优先：MANUAL.md（新命名）→ 使用说明书.md（旧包兼容）→ 内嵌副本
+    for (const char* name : { "/MANUAL.md", "/使用说明书.md" }) {
+        QFile f(QCoreApplication::applicationDirPath() + QString::fromUtf8(name));
+        if (f.exists() && f.open(QIODevice::ReadOnly)) return QString::fromUtf8(f.readAll());
+    }
     QFile r(":/manual.md");
     if (r.open(QIODevice::ReadOnly)) return QString::fromUtf8(r.readAll());
     return QString();
@@ -1311,7 +1314,7 @@ static QString manualHash(const QString& md) {
 //       左下装饰位（默认留白；exe 旁放 `说明书插图.png` 即自动显示）+ 右下「☐ 下次更新前不再展示」+「确认」。
 // 交互（与 MAA 一致）：必须**滚动到底**才能关；未读完点确认依次出现调侃文案，连续点 20 次以上放行；
 //       勾「下次更新前不再展示」→ 记住当前内容版本，内容更新后自动恢复提示（Alt+F4 同样受门禁约束）。
-// 内容来源：exe 旁 `使用说明书.md`（可外部替换）→ 内嵌副本 :/manual.md 兜底。
+// 内容来源：exe 旁 `MANUAL.md`（可外部替换）→ 内嵌副本 :/manual.md 兜底。
 class ManualDialog : public QWidget {
 public:
     ManualDialog(bool dark, const QColor& accent, const QString& md, std::function<void(bool)> onClosed, QWidget* parent = nullptr)
@@ -2068,7 +2071,7 @@ public:
     void openManual() {
         if (m_manualWin) { m_manualWin->raise(); m_manualWin->activateWindow(); return; }   // 已开着就置前，不重复弹
         const QString md = manualText();
-        if (md.isEmpty()) { showToast(T("未找到说明书内容（使用说明书.md）")); return; }
+        if (md.isEmpty()) { showToast(T("未找到说明书内容（MANUAL.md）")); return; }
         // 独立窗口（非模态）：勾了「下次更新前不再展示」才记住当前内容版本，内容一更新就恢复提示
         auto* win = new ManualDialog(m_dark, m_accent, md, [this, md](bool noRemind) {
             if (!noRemind) return;

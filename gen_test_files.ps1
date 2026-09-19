@@ -1,5 +1,5 @@
 ﻿$ErrorActionPreference = 'Continue'
-$dir = '<repo-v0.3.0>\data'
+$dir = Join-Path $PSScriptRoot 'data'
 New-Item -ItemType Directory -Force -Path $dir | Out-Null
 
 # ---------- CSV（手写：BOM + 中文 + 引号/逗号字段，覆盖 csv_reader 边角） ----------
@@ -12,7 +12,7 @@ $csvLines = @(
 )
 $csvText = ($csvLines -join "`r`n") + "`r`n"
 $utf8Bom = [System.Text.UTF8Encoding]::new($true)
-[System.IO.File]::WriteAllText("$dir\回归测试_人员表.csv", $csvText, $utf8Bom)
+[System.IO.File]::WriteAllText("$dir\regression-staff.csv", $csvText, $utf8Bom)
 Write-Output 'csv written'
 
 # ---------- Excel / Word COM 生成（真实文件，可同时被 Office 打开验证） ----------
@@ -44,8 +44,8 @@ try {
   $s2.Cells.Item(3,1) = '安装部'; $s2.Cells.Item(3,2) = 190; $s2.Cells.Item(3,3) = 24
 
   $excel.DisplayAlerts = $false
-  $wb.SaveAs("$dir\回归测试_多表.xlsx", 51)     # xlsx
-  $wb.SaveAs("$dir\回归测试_旧版.xls", 56)      # xls(BIFF8) -> 测 xls_reader
+  $wb.SaveAs("$dir\regression-multisheet.xlsx", 51)     # xlsx
+  $wb.SaveAs("$dir\regression-legacy.xls", 56)      # xls(BIFF8) -> 测 xls_reader
   $wb.Close($false)
   $excel.Quit()
   [System.Runtime.Interopservices.Marshal]::ReleaseComObject($excel) | Out-Null
@@ -70,7 +70,7 @@ try {
   $sel.TypeText('第二段：测试特殊符号 & < > " 引号 与换行内容，供 docx 文本提取检测。')
   $sel.TypeParagraph()
   $sel.TypeText('关键词：搜索命中测试 大修 工日 核定。')
-  $doc.SaveAs("$dir\回归测试_文档.docx", 16)   # wdFormatXMLDocument
+  $doc.SaveAs("$dir\regression-document.docx", 16)   # wdFormatXMLDocument
   $doc.Close($false)
   $word.Quit()
   [System.Runtime.Interopservices.Marshal]::ReleaseComObject($word) | Out-Null
@@ -97,7 +97,7 @@ if (-not $excelOk) {
       '<row r="2"><c r="A2" t="inlineStr"><is><t>张三</t></is></c><c r="B2" t="s"><v>0</v></c><c r="C2"><v>168</v></c></row>' +
       '<row r="3"><c r="A3" t="inlineStr"><is><t>李四</t></is></c><c r="B3" t="s"><v>1</v></c><c r="C3"><v>190</v></c></row>' +
       '</sheetData></worksheet>'
-    $fs = [System.IO.File]::Create("$dir\回归测试_兜底.xlsx")
+    $fs = [System.IO.File]::Create("$dir\regression-fallback.xlsx")
     $zip = New-Object System.IO.Compression.ZipArchive($fs, [System.IO.Compression.ZipArchiveMode]::Create)
     foreach ($item in @(@('xl/workbook.xml',$wbXml), @('xl/sharedStrings.xml',$ssXml), @('xl/worksheets/sheet1.xml',$shXml))) {
       $entry = $zip.CreateEntry($item[0], [System.IO.Compression.CompressionLevel]::Optimal)
@@ -117,7 +117,7 @@ if (-not $wordOk) {
       '<w:p><w:r><w:t>第一段 中文与数字 工时168 工日21</w:t></w:r></w:p>' +
       '<w:p><w:r><w:t>关键词 搜索命中测试 大修 工日 核定</w:t></w:r></w:p>' +
       '</w:body></w:document>'
-    $fs = [System.IO.File]::Create("$dir\回归测试_兜底.docx")
+    $fs = [System.IO.File]::Create("$dir\regression-fallback.docx")
     $zip = New-Object System.IO.Compression.ZipArchive($fs, [System.IO.Compression.ZipArchiveMode]::Create)
     foreach ($item in @(@('word/document.xml',$documentXml))) {
       $entry = $zip.CreateEntry($item[0], [System.IO.Compression.CompressionLevel]::Optimal)

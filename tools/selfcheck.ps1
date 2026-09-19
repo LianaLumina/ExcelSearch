@@ -13,7 +13,7 @@
 #   report.txt / search.txt / filter.txt / colprobe.txt / shot-*.png
 # 注意：脚本**不会**动用户配置里的屏蔽/标记；也**不会**执行 --clearmarks。
 param(
-    [string]$Exe    = "<repo>\build\bin\excel_search.exe",
+    [string]$Exe    = (Join-Path $PSScriptRoot '..\build\bin\excel_search.exe'),
     [string]$OutDir = "",
     [switch]$NoAnim,
     [switch]$SkipShots,
