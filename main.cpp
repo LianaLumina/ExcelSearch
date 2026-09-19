@@ -30,6 +30,11 @@
 #include <QInputDialog>
 #include <QMessageBox>
 #include <QPlainTextEdit>
+#include <QTextBrowser>
+#include <QCryptographicHash>
+#include <QScrollBar>
+#include <QFile>
+#include <QKeyEvent>
 #include <QStyledItemDelegate>
 #include <QStyleOptionViewItem>
 #include <QIcon>
@@ -577,7 +582,8 @@ static QString qssFor(const Proto& p) {
     R(T("#panel"), T("background:") + C(p.panelBg) + "; border:1px solid " + C(p.border) + "; border-radius:12px");
     R(T("QLabel"), T("color:") + C(p.text));
     R(T("#appTitle"), T("font-size:15px; font-weight:600; color:") + C(p.text));
-    R(T("#cardTitle"), T("font-size:14px; font-weight:600; color:") + C(p.text));
+        R(T("#manualView"), T("background:transparent; border:none; padding:2px 8px; font-size:14px; color:") + C(p.text));
+    R(T("#manualDeco"), T("background:") + C(p.altRow) + T("; border:1px dashed ") + C(p.border) + T("; border-radius:10px"));R(T("#cardTitle"), T("font-size:14px; font-weight:600; color:") + C(p.text));
     R(T("#statVal"), T("font-size:22px; font-weight:700; color:") + C(p.accent));
     R(T("QPushButton#statVal"), T("padding:0; background:transparent; border:none;"));
     R(T("#statLabel"), T("color:") + C(p.sub));
@@ -1128,6 +1134,7 @@ public:
         setWindowFlags(Qt::Dialog | Qt::FramelessWindowHint);
         setAttribute(Qt::WA_TranslucentBackground);
         setModal(true);
+        setWindowTitle(T("使用说明书"));   // 无边框下不显示，但便于窗口枚举/辅助功能
         setStyleSheet(qssFor(makeProto(dark, accent)));
         auto* root = new QVBoxLayout(this); root->setContentsMargins(0, 0, 0, 0);
         auto* panel = new QWidget; panel->setObjectName("panel");
@@ -1159,6 +1166,7 @@ public:
         setWindowFlags(Qt::Dialog | Qt::FramelessWindowHint);
         setAttribute(Qt::WA_TranslucentBackground);
         setModal(true);
+        setWindowTitle(T("使用说明书"));   // 无边框下不显示，但便于窗口枚举/辅助功能
         setStyleSheet(qssFor(makeProto(dark, accent)));
         auto* root = new QVBoxLayout(this); root->setContentsMargins(0, 0, 0, 0);
         auto* panel = new QWidget; panel->setObjectName("panel");
@@ -1181,6 +1189,7 @@ public:
         setWindowFlags(Qt::Dialog | Qt::FramelessWindowHint);
         setAttribute(Qt::WA_TranslucentBackground);
         setModal(true);
+        setWindowTitle(T("使用说明书"));   // 无边框下不显示，但便于窗口枚举/辅助功能
         setStyleSheet(qssFor(makeProto(dark, accent)));
         auto* root = new QVBoxLayout(this); root->setContentsMargins(0, 0, 0, 0);
         auto* panel = new QWidget; panel->setObjectName("panel");
@@ -1213,6 +1222,7 @@ public:
         setWindowFlags(Qt::Dialog | Qt::FramelessWindowHint);
         setAttribute(Qt::WA_TranslucentBackground);
         setModal(true);
+        setWindowTitle(T("使用说明书"));   // 无边框下不显示，但便于窗口枚举/辅助功能
         setStyleSheet(qssFor(makeProto(dark, accent)));
         auto* root = new QVBoxLayout(this); root->setContentsMargins(0, 0, 0, 0);
         auto* panel = new QWidget; panel->setObjectName("panel");
@@ -1237,6 +1247,149 @@ public:
 private:
     QCheckBox* m_noAsk = nullptr;
     int m_choice = None;
+};
+
+// ============================================================================
+// 使用说明书窗口（版式与交互对齐 MAA 的「公告」框；实现为本项目自有代码）
+// ----------------------------------------------------------------------------
+// 版式：左「章节列表」+ 右「可滚动正文」；左下为**装饰位（默认留白，预留图片接口）**；
+//       右下「☐ 下次说明书更新前不再显示」+「确认」。
+// 交互（与 MAA 一致）：
+//   · 启动时若「当前说明书内容 ≠ 上次已关闭的版本」且未永久关闭 → 自动弹出；
+//   · **必须滚动到底**才能关闭；未读到底时点确认会依次出现几句调侃，连续点 20 次以上才放行；
+//   · 勾「下次说明书更新前不再显示」→ 记住当前内容版本，**内容更新后自动恢复提示**；
+//   · 「设置 → 通用设置」另有永久开关（对应 MAA 的「不显示公告」）。
+// 内容来源：exe 同目录的 `使用说明书.md`（可外部替换，无需重编译）→ 缺省用内嵌副本 :/manual.md
+// 装饰图片接口：exe 同目录放 `说明书插图.png` 即自动显示（未放则留白）。
+// ============================================================================
+static const char* kManualNags[3] = {
+    "还没看完呢，往下翻翻～", "后面还有内容，别急着关～", "真的不看一下吗？就一点点～"
+};
+static QString manualText() {
+    QFile f(QCoreApplication::applicationDirPath() + "/使用说明书.md");
+    if (f.exists() && f.open(QIODevice::ReadOnly)) return QString::fromUtf8(f.readAll());
+    QFile r(":/manual.md");
+    if (r.open(QIODevice::ReadOnly)) return QString::fromUtf8(r.readAll());
+    return QString();
+}
+// 按 `### 标题` 分节；首项固定为「全部内容」（与 MAA 公告的 ALL 项一致）
+static QVector<QPair<QString, QString>> manualSections(const QString& md) {
+    QVector<QPair<QString, QString>> out;
+    out.push_back({ T("全部内容"), md });
+    QString title; QStringList body;
+    for (const QString& ln : md.split('\n')) {
+        if (ln.startsWith("### ")) {
+            if (!title.isEmpty()) out.push_back({ title, body.join('\n') });
+            title = ln.mid(4).trimmed(); body.clear(); body << ln;
+        } else if (!title.isEmpty()) body << ln;
+    }
+    if (!title.isEmpty()) out.push_back({ title, body.join('\n') });
+    return out;
+}
+// 体检：哪些章节在真实控件里会需要横向滚动（= 内容比窗口宽 → 会被裁掉，必须改文案）
+static QString manualOverflowSections() {
+    QTextBrowser tb;
+    tb.setHorizontalScrollBarPolicy(Qt::ScrollBarAlwaysOff);
+    tb.setLineWrapMode(QTextEdit::WidgetWidth);
+    tb.resize(648, 420);   // 与手册窗口里正文区的实际可用尺寸一致
+    QStringList bad;
+    for (const auto& s : manualSections(manualText())) {
+        tb.setMarkdown(s.second);
+        if (tb.horizontalScrollBar()->maximum() > 0) bad << s.first;
+    }
+    return bad.isEmpty() ? QStringLiteral("none") : bad.join(QStringLiteral(" / "));
+}
+static QString manualHash(const QString& md) {
+    return QString::fromLatin1(QCryptographicHash::hash(md.toUtf8(), QCryptographicHash::Md5).toHex());
+}
+class ManualDialog : public QDialog {
+public:
+    ManualDialog(bool dark, const QColor& accent, const QString& md, QWidget* parent) : QDialog(parent) {
+        setWindowFlags(Qt::Dialog | Qt::FramelessWindowHint);
+        setAttribute(Qt::WA_TranslucentBackground);
+        setModal(true);
+        setWindowTitle(T("使用说明书"));   // 无边框下不显示，但便于窗口枚举/辅助功能
+        setStyleSheet(qssFor(makeProto(dark, accent)));
+        const Proto p = makeProto(dark, accent);
+
+        m_sections = manualSections(md);
+
+        auto* root = new QVBoxLayout(this); root->setContentsMargins(0, 0, 0, 0);
+        auto* panel = new QWidget; panel->setObjectName("panel");
+        auto* pv = new QVBoxLayout(panel); pv->setContentsMargins(16, 10, 16, 14); pv->setSpacing(10);
+        auto* tb = new QHBoxLayout;
+        auto* title = new QLabel(T("使用说明书")); title->setObjectName("appTitle"); tb->addWidget(title);
+        tb->addStretch();
+        m_close = new WinBtn(WinBtn::Close);
+        m_close->setTheme(p.text, p.hover, p.closeHover);
+        connect(m_close, &QPushButton::clicked, this, [this] { tryClose(); });
+        tb->addWidget(m_close);
+        pv->addLayout(tb);
+
+        auto* bodyRow = new QHBoxLayout; bodyRow->setSpacing(12);
+        auto* leftCol = new QVBoxLayout; leftCol->setSpacing(8);
+        m_list = new QListWidget; m_list->setFixedWidth(188);
+        for (const auto& s : m_sections) m_list->addItem(s.first);
+        leftCol->addWidget(m_list, 1);
+        m_deco = new QLabel; m_deco->setObjectName("manualDeco");
+        m_deco->setFixedHeight(142); m_deco->setAlignment(Qt::AlignCenter);
+        const QString decoPath = QCoreApplication::applicationDirPath() + "/说明书插图.png";
+        if (QFile::exists(decoPath)) {
+            QPixmap pm(decoPath);
+            if (!pm.isNull()) m_deco->setPixmap(pm.scaled(m_deco->width(), m_deco->height(), Qt::KeepAspectRatio, Qt::SmoothTransformation));
+        }
+        leftCol->addWidget(m_deco);
+        bodyRow->addLayout(leftCol);
+        m_view = new QTextBrowser; m_view->setObjectName("manualView"); m_view->setOpenExternalLinks(true);
+        // 横向滚动条一律去掉（用户要求）：正文强制按窗口宽度换行，宁可把文案改短也不出横条
+        m_view->setHorizontalScrollBarPolicy(Qt::ScrollBarAlwaysOff);
+        m_view->setLineWrapMode(QTextEdit::WidgetWidth);
+        bodyRow->addWidget(m_view, 1);
+        pv->addLayout(bodyRow, 1);
+
+        auto* bot = new QHBoxLayout;
+        m_noRemind = new QCheckBox(T("下次说明书更新前不再显示"));
+        bot->addWidget(m_noRemind); bot->addStretch();
+        m_btn = new QPushButton(T("确认")); m_btn->setObjectName("primaryBtn"); m_btn->setMinimumWidth(108);
+        m_btn->setCursor(Qt::PointingHandCursor);
+        connect(m_btn, &QPushButton::clicked, this, [this] { tryClose(); });
+        bot->addWidget(m_btn);
+        pv->addLayout(bot);
+        root->addWidget(panel);
+        resize(880, 566);
+
+        connect(m_list, &QListWidget::currentRowChanged, this, [this](int r) { showSection(r); });
+        connect(m_view->verticalScrollBar(), &QScrollBar::valueChanged, this, [this](int) { checkScrolled(); });
+        if (m_list->count()) m_list->setCurrentRow(0);
+    }
+    bool noRemindChecked() const { return m_noRemind && m_noRemind->isChecked(); }
+protected:
+    void keyPressEvent(QKeyEvent* e) override {   // Esc 与 × 同义（同样受「读到底」约束，跟 MAA 一致）
+        if (e->key() == Qt::Key_Escape) { tryClose(); return; }
+        QDialog::keyPressEvent(e);
+    }
+private:
+    void showSection(int idx) {
+        if (idx < 0 || idx >= (int)m_sections.size()) return;
+        m_view->setMarkdown(m_sections[idx].second);
+        m_view->verticalScrollBar()->setValue(0);
+        m_readToBottom = false;
+        QTimer::singleShot(0, this, [this] { checkScrolled(); });   // 内容不足一屏时视为已读完
+    }
+    void checkScrolled() {
+        QScrollBar* sb = m_view->verticalScrollBar();
+        if (sb->maximum() <= 0 || sb->value() >= sb->maximum() - 10) m_readToBottom = true;
+    }
+    // 关闭：读到底或勾了「不再显示」才放行；否则依次调侃，连续点 20 次以上放行（与 MAA 一致）
+    void tryClose() {
+        if (m_readToBottom || noRemindChecked()) { accept(); return; }
+        if (m_nag < 3) m_btn->setText(QString::fromUtf8(kManualNags[m_nag++]));
+        else { m_btn->setText(m_btn->text() + QStringLiteral("?")); if (++m_stubborn > 20) accept(); }
+    }
+    QVector<QPair<QString, QString>> m_sections;
+    QListWidget* m_list = nullptr; QTextBrowser* m_view = nullptr; QLabel* m_deco = nullptr;
+    QCheckBox* m_noRemind = nullptr; QPushButton* m_btn = nullptr; WinBtn* m_close = nullptr;
+    bool m_readToBottom = false; int m_nag = 0; int m_stubborn = 0;
 };
 
 struct CardDef { QString title; bool expand; std::function<QWidget*()> make; };
@@ -1665,10 +1818,12 @@ class AppWindow : public QWidget {
     QMenu* m_trayMenu = nullptr;
     bool m_trayHintShown = false;             // 本次启动首次隐藏是否已气泡提示
     bool m_migratedFromOld = false;           // 本次启动是否刚完成「V0.3.0 注册表 → config.ini」搬迁
+    bool m_manualNeverShow = false;           // 启动时永久不提示说明书（对应 MAA 的 DoNotShow）
     bool m_quitting = false;                  // true = 真的在退出（closeEvent 放行）
     // 关闭行为：0=每次询问 1=直接关闭 2=最小化到托盘（可在 设置 → 通用设置 调整）
     int m_closeAction = 0;
     QRadioButton *m_closeAskBtn = nullptr, *m_closeDirectBtn = nullptr, *m_closeTrayBtn = nullptr;
+    QCheckBox* m_manualChk = nullptr;   // 通用设置：启动时不再提示说明书
     std::string m_settingsPath;
     std::string m_cachePath;
     std::string m_cacheInvPath;
@@ -1806,6 +1961,37 @@ public:
         QString detail;
         migrateFromRegistry(true, &detail);
         return detail;
+    }
+    // ---- 使用说明书（版式与交互对齐 MAA「公告」框）----
+    // 打开说明书；若用户勾了「下次说明书更新前不再显示」，则记住**当前内容版本**（哈希）——
+    // 内容一旦更新（哈希变化），下次启动会自动恢复提示（与 MAA 的 DoNotShowAgain 语义一致）。
+    void openManual() {
+        const QString md = manualText();
+        if (md.isEmpty()) { showToast(T("未找到说明书内容（使用说明书.md）")); return; }
+        ManualDialog dlg(m_dark, m_accent, md, this);
+        const bool closed = (dlg.exec() == QDialog::Accepted);
+        if (closed && dlg.noRemindChecked()) {
+            QSettings s(QString::fromUtf8(m_settingsPath.c_str()), QSettings::IniFormat);
+            s.setValue("manual/dismissedHash", manualHash(md));
+        }
+    }
+    // 启动时检查：未永久关闭、且当前内容版本 ≠ 上次已关闭的版本 → 弹出
+    void maybeShowManual() {
+        if (m_manualNeverShow) return;
+        const QString md = manualText();
+        if (md.isEmpty()) return;
+        QSettings s(QString::fromUtf8(m_settingsPath.c_str()), QSettings::IniFormat);
+        if (s.value("manual/dismissedHash", "").toString() == manualHash(md)) return;
+        openManual();
+    }
+    // 自检钩子：--page manual 渲染使用说明书窗口
+    QPixmap demoManualPixmap() {
+        ManualDialog dlg(m_dark, m_accent, manualText(), this);
+        dlg.show();
+        QCoreApplication::processEvents();
+        QPixmap pm = dlg.grab();
+        dlg.close();
+        return pm;
     }
     QPixmap demoCloseDialogPixmap() {
         CloseDialog d(m_dark, m_accent, this);
@@ -1976,6 +2162,7 @@ public:
     bool shareEnabled() const { return m_shareMode; }
     // 自检：托盘是否真的可用（无托盘环境应返回 false，此时 × 仍按普通关闭处理）
     bool trayActive() const { return m_tray && m_tray->isVisible(); }
+    bool manualNeverShowC() const { return m_manualNeverShow; }
     const char* closeActionName() const { return m_closeAction == 1 ? "close" : (m_closeAction == 2 ? "tray" : "ask"); }
     // 动效开关状态（--report 新增字段 anim=on|off，用来证明开关真的生效；既有字段含义不变）
     const char* animName() const { return g_noAnim ? "off" : "on"; }
@@ -2365,6 +2552,7 @@ private:
             m_closeAction = (ca == "close") ? 1 : (ca == "tray" ? 2 : 0);
         }
         m_marks.load(s);
+        m_manualNeverShow = s.value("manual/neverShow", false).toBool();
         m_adminPassword = s.value("admin/password", QString::fromUtf8(kDefaultAdminPassword)).toString().toUtf8().toStdString();
         // 智能列配置：换行分隔的来源列表。
         // 键「不存在」→ 用默认布局（原版 7 列）；键存在但为空 → 用户主动只保留固定 3 列。
@@ -2407,6 +2595,7 @@ private:
         s.setValue("share/path", QString::fromUtf8(m_sharePath.c_str()));
         s.setValue("share/enabled", m_shareMode);
         s.setValue("ui/closeAction", m_closeAction == 1 ? "close" : (m_closeAction == 2 ? "tray" : "ask"));
+        s.setValue("manual/neverShow", m_manualNeverShow);
         m_marks.save(s);
         s.setValue("admin/password", QString::fromUtf8(m_adminPassword.c_str()));
         {
@@ -3715,6 +3904,11 @@ private:
         connect(m_closeAskBtn, &QRadioButton::toggled, this, [this](bool on) { if (on) { m_closeAction = 0; saveSettings(); } });
         connect(m_closeDirectBtn, &QRadioButton::toggled, this, [this](bool on) { if (on) { m_closeAction = 1; saveSettings(); } });
         connect(m_closeTrayBtn, &QRadioButton::toggled, this, [this](bool on) { if (on) { m_closeAction = 2; saveSettings(); } });
+        // 说明书提示开关（对应 MAA 公告的「不显示公告」；内容更新后仍会恢复提示）
+        m_manualChk = new QCheckBox(T("启动时不再提示说明书（说明书更新后恢复提示）"));
+        m_manualChk->setChecked(m_manualNeverShow);
+        v->addWidget(m_manualChk);
+        connect(m_manualChk, &QCheckBox::toggled, this, [this](bool on) { m_manualNeverShow = on; saveSettings(); });
         v->addStretch();
         return w;
     }
@@ -3844,6 +4038,10 @@ private:
         v->addWidget(new QLabel(T("本程序以动态链接方式使用 Qt（LGPL-3.0）；第三方组件许可见 licenses 目录。")));
         v->addWidget(new QLabel(T("界面视觉风格参考自 MAA / MaaWpfGui 与 MaaEnd。")));
         auto* row = new QHBoxLayout;
+        auto* manBtn = new QPushButton(T("使用说明书")); manBtn->setObjectName("primaryBtn");
+        manBtn->setCursor(Qt::PointingHandCursor);
+        connect(manBtn, &QPushButton::clicked, this, [this] { openManual(); });
+        row->addWidget(manBtn);
         auto* btn = new QPushButton(T("查看开源声明")); btn->setObjectName("themeBtn");
         connect(btn, &QPushButton::clicked, this, [] {
             const QString dir = QCoreApplication::applicationDirPath() + "/licenses";
@@ -3910,6 +4108,7 @@ int main(int argc, char** argv) {
     QString shotKw; bool shotKwSet = false; bool toLight = false;
     bool toAdv = false; int advSec = -1; int setSec = -1; int tabIdx = -1;
     bool toCloseDlg = false;
+    bool toManual = false;   // --page manual：渲染使用说明书窗口
     QString collapseSpec, hoverWhat;   // 截图用：折叠指定卡片 / 强制 hover 终态（见 demoCollapse/demoHover）
     QString midMs;                     // 截图用：--mid <毫秒> 只等指定时长（抓动画中间帧）
     bool reloadBeforeShot = false;     // 截图用：--reload 截图前再触发一次"重新加载"
@@ -3926,6 +4125,7 @@ int main(int argc, char** argv) {
         if (std::strcmp(argv[i], "--page") == 0 && i + 1 < argc && std::strcmp(argv[i + 1], "settings") == 0) toSettings = true;
         if (std::strcmp(argv[i], "--page") == 0 && i + 1 < argc && std::strcmp(argv[i + 1], "adv") == 0) toAdv = true;
         if (std::strcmp(argv[i], "--page") == 0 && i + 1 < argc && std::strcmp(argv[i + 1], "closedlg") == 0) toCloseDlg = true;
+        if (std::strcmp(argv[i], "--page") == 0 && i + 1 < argc && std::strcmp(argv[i + 1], "manual") == 0) toManual = true;
         if (std::strcmp(argv[i], "--advsec") == 0 && i + 1 < argc) advSec = atoi(argv[i + 1]);
         if (std::strcmp(argv[i], "--sec") == 0 && i + 1 < argc) setSec = atoi(argv[i + 1]);
         if (std::strcmp(argv[i], "--tab") == 0 && i + 1 < argc) tabIdx = atoi(argv[i + 1]);
@@ -3987,6 +4187,8 @@ int main(int argc, char** argv) {
 
     AppWindow w;
     w.show();
+    // 启动后检查使用说明书：内容与上次关闭的版本不同才弹（与 MAA 公告一致）
+    QTimer::singleShot(1200, &w, [&w] { w.maybeShowManual(); });
     // 重复启动时，已运行的实例收到 "show" → 把窗口从托盘/后台唤到前台
     QObject::connect(instanceServer, &QLocalServer::newConnection, &w, [instanceServer, &w] {
         while (QLocalSocket* s = instanceServer->nextPendingConnection()) {
@@ -4038,6 +4240,10 @@ int main(int argc, char** argv) {
           << "\nshareMode=" << (w.shareEnabled() ? "on" : "off") << "\nsharePath=" << w.sharePathC()
           << "\ntray=" << (w.trayActive() ? "on" : "off")
           << "\nappIcon=" << (w.appIconIsResource() ? "resource" : "fallback")
+          << "\nmanualText=" << (manualText().isEmpty() ? "empty" : "ok")
+          << "\nmanualHash=" << manualHash(manualText()).left(8).toUtf8().constData()
+          << "\nmanualNever=" << (w.manualNeverShowC() ? "1" : "0")
+          << "\nmanualOverflow=" << manualOverflowSections().toUtf8().constData()
           << "\ncloseAction=" << w.closeActionName()
           << "\nanim=" << w.animName() << "\n";   // 新增字段（既有字段含义未变）：证明动效开关真的生效
         o.close();
@@ -4056,6 +4262,7 @@ int main(int argc, char** argv) {
         w.waitForLoad();
         if (toSettings) { w.goSettingsPage(); w.goSection(setSec >= 0 ? setSec : 0); }
         else if (toCloseDlg) { w.demoCloseDialogPixmap().save(shot); return 0; }   // 关闭方式对话框
+        else if (toManual) { w.demoManualPixmap().save(shot); return 0; }   // 使用说明书窗口
         else if (toAdv) { w.goAdvPage(advSec >= 0); if (advSec >= 0) w.goAdvSection(advSec); }   // 截图用：无 --advsec 时停在解锁层
         else if (shotKwSet) { if (!shotKw.isEmpty()) w.demoSearch(shotKw.toUtf8().constData()); }   // --kw "" → 空输入框(看占位符)
         else w.demoSearch("工日");

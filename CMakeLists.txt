@@ -24,6 +24,7 @@ set(RAPIDFUZZ ${TP}/rapidfuzz)
 add_executable(excel_search
     main.cpp
     app_icon.qrc         # 内嵌 app.ico（托盘/任务栏/资源管理器 三处图标统一）
+    manual.qrc           # 内嵌 使用说明书.md（外部文件缺失时的兜底）
     app_qt.rc            # 图标 + 清单(asInvoker/PerMonitorV2) + 版本信息(V0.3.2)
     search_engine.cpp
     xlsx_reader.cpp

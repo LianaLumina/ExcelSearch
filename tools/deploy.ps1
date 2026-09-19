@@ -127,6 +127,10 @@ $licOut = Join-Path $OutDir "licenses"
 New-Item -ItemType Directory -Force -Path $licOut | Out-Null
 Copy-Item (Join-Path $root "licenses\*") $licOut -Recurse -Force
 Copy-Item (Join-Path $root "LICENSE") $OutDir -Force -ErrorAction SilentlyContinue
+# 使用说明书：随包放在 exe 同目录（可外部替换，无需重编译；缺省则程序用内嵌副本）
+Copy-Item (Join-Path $root "使用说明书.md") $OutDir -Force -ErrorAction SilentlyContinue
+# 说明书插图（可选）：若存在则一并带上 —— 手册窗口左下角的装饰位会自动显示
+if (Test-Path (Join-Path $root "说明书插图.png")) { Copy-Item (Join-Path $root "说明书插图.png") $OutDir -Force }
 
 # Qt 许可证全文（本机 Qt 安装内最权威）
 $qtLic = Join-Path $MSYS "share\licenses\qt6-base"
