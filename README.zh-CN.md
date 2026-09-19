@@ -12,6 +12,20 @@
 
 ---
 
+## 界面预览
+
+| 搜索页（浅色） | 设置页（深色） |
+|---|---|
+| ![搜索页](docs/images/search-light.png) | ![设置页](docs/images/settings-dark.png) |
+
+| 使用说明书（浅色） | 使用说明书（深色） |
+|---|---|
+| ![使用说明书](docs/images/manual-light.png) | ![使用说明书（深色）](docs/images/manual-dark.png) |
+
+> 截图由程序自带的离屏截图钩子生成（`--shot`），与运行时界面一致。
+
+---
+
 ## 功能
 
 | 功能 | 说明 |
