@@ -208,6 +208,10 @@ miniz(MIT) / pugixml(MIT) / rapidfuzz(MIT) / libxls(BSD) / win_iconv(Public Doma
 
 ## 文档
 
-- [`docs/开源合规核查.md`](docs/开源合规核查.md) —— 开源合规性核查记录
-- 其余 `*.md`（`README_CN.md`、`ARCHITECTURE.md`、`交接说明.md`、`V0.3.0_UI美化方案.md`）
-  为 **V0.3.0（Win32 版）时期的历史文档**，仅作沿革参考。
+| 文档 | 说明 |
+|---|---|
+| [`CHANGELOG.md`](CHANGELOG.md) | 版本改动记录（自 V0.3.2 起） |
+| [`docs/V0.3.2_验证报告.md`](docs/V0.3.2_验证报告.md) | 本版交付验证报告（构建 / 部署 / 安装包 / 功能 / 性能实测） |
+| [`docs/开源合规核查.md`](docs/开源合规核查.md) | 开源合规性核查记录（含 MAA / MaaEnd 使用核查） |
+| [`docs/原型期存档/`](docs/原型期存档/) | Qt 原型期的设计与迁移记录（回迁清单、动效设计、缓存验证、冒烟报告等） |
+| [`docs/历史/`](docs/历史/) | V0.3.0（Win32 版）时期文档，仅作沿革参考 |
