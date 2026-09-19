@@ -234,6 +234,39 @@ rects=chk:314,527,134x18;btn:458,521,108x31;view:204,54,660x457
 
 ---
 
+### D11 仓库专业化与隐私复扫（2026-09-19）
+
+**起因（含我的一处失误）**：公开前我做过一次本机路径扫描并报告"干净"，但那次正则把 `\\` 写成了 `\\\\`
+（实际匹配的是**两个**反斜杠），因此**漏报**。这轮用正确的写法重扫，确实查出了多处本机绝对路径。
+
+- **命中（工作区 11 个文件 + 全部历史提交）**：开发机的**本机绝对路径**出现在 `tools/selfcheck.ps1`、
+  `tools/smoke.ps1` 的**默认参数**、`gen_test_files.ps1`、合规文档与归档/原型文档中；
+  内网共享目录的 **UNC 名称**此前只清了工作区，**历史提交里仍在**。
+- **处理**：
+  1. 工具脚本默认参数改为基于 `$PSScriptRoot` 的相对路径——这也修掉一个真实缺陷：原先克隆者不传参就会指向开发机的路径；
+  2. 文档与归档中的绝对路径替换为 `<repo>` / `<workspace>` / `<prototype>` / `<maa-ref>` / `<smoke-dir>` 等占位符；
+  3. `git filter-branch` 重写全部历史（`--tree-filter` 清洗路径、`--msg-filter` 规范化提交信息），随后强推 `main` 与 `v0.3.2`；
+  4. **重写前后 tip 的 `git diff` 为空**——证明只替换了字符串，代码与文档内容未被改动；
+  5. 复扫"本机盘符路径 + 内网共享名"（`git grep` 扫全部 10 个提交）**无命中**；工作区仅剩 `requireAdministrator` 这类误报。
+- **命名规范化（27 项，见提交 `c49418d`）**：`使用说明书.md` → **`MANUAL.md`**（程序查找顺序：
+  `MANUAL.md` → `使用说明书.md`（兼容旧包）→ 内嵌副本；`manual.qrc` / `deploy.ps1` / 安装包同步）、
+  `docs/V0.3.2_验证报告.md` → `docs/VERIFICATION.md`、`docs/开源合规核查.md` → `docs/LICENSE-COMPLIANCE.md`、
+  截图英文化、`docs/历史` → `docs/archive`、`docs/原型期存档` → `docs/prototype-archive`、
+  `data/回归测试_*` → `data/regression-*`。
+- **版本串与提交信息**：`CHANGELOG.md` 标题 `## V0.3.2 — Qt6 界面重写版` → `## V0.3.2`，README 版本行同步去后缀；
+  首个提交信息 `V0.3.2: Qt6 界面重写版（首个开源版本）` → **`V0.3.2`**，其余提交统一 `feat/fix/docs/chore` 前缀。
+- **鸣谢措辞修正（因该轮复核发现原措辞不够准确）**：原写"仅为视觉风格参考"，但说明书弹窗的**交互方式**
+  是刻意对齐 MAA 公告框的 → 已在 README、`licenses/THIRD-PARTY-NOTICES.md`、`MANUAL.md`、`CHANGELOG.md`
+  与 `docs/LICENSE-COMPLIANCE.md`（新增**指纹 4** 逐条比对表）统一改为
+  "**视觉风格与弹窗交互方式参考，未使用、未复制其任何代码或资源**"。
+- **重新交付与复验**：重跑 `tools\deploy.ps1`（109 文件 / 80.6 MB）与 `tools\build-installer.ps1`
+  （安装包 24.01 MB），替换 Release 附件、Release 名称改为 `v0.3.2`、仓库简介改为
+  `ExcelSearch — Excel/CSV/Word 关键字搜索工具（Qt 6 · C++17 · Windows 桌面）`；
+  匿名复验：仓库 public、Release `v0.3.2`、附件 HTTP 200 / 24.01 MB、根目录**无中文命名文件**；
+  部署版 `--report`：`manualText=ok`、`manualHash=67f90809`（= 仓库 `MANUAL.md` 的 MD5 前 8 位）。
+
+---
+
 ## 未完成 / 待办
 
 | 项 | 说明 |
@@ -242,6 +275,6 @@ rects=chk:314,527,134x18;btn:458,521,108x31;view:204,54,660x457
 | ~~说明书~~ | ✅ **已完成**（`MANUAL.md` + 说明书窗口，随绿色版与安装包分发；入口仅在「关于我们」页，见 D9） |
 | ~~最终清理~~ | ✅ **已完成**（`V0.3.0` 与 `qt_ui_proto` 已删除，原型历史存入 `_归档\qt_ui_proto_历史_20260919.bundle`；`<加密工具目录>` 保留、`<Linux 版目录>` 不归档） |
 | ~~历史文档~~ | ✅ **已归档**（V0.3.0 时期文档移入 `docs\archive\`，原型资料移入 `docs\prototype-archive\`） |
+| ~~GitHub 发布~~ | ✅ **已完成**（仓库 **public**、Release `v0.3.2` 含安装包附件；公开前后的隐私复扫见 D11） |
 | Win11 任务栏固定 | 安装程序写入"用户固定"目录在 Win10 有效，**Win11 需用户手动固定一次** |
-| GitHub 发布 | 仓库已上传（当前私有）；待用户定稿说明书后补 Release 资产并转公开 |
 | 体积 | 绿色版 80 MB（ICU 数据 DLL 约 30 MB 为 Qt 固有依赖） |
