@@ -1,66 +1,86 @@
-# Excel 表格关键字搜索工具（ExcelSearch）
+（English | [中文](README.zh-CN.md)）
 
-把 Excel / Word / CSV 表格放进 `data` 目录，即可对**全部表格内容**做关键字检索，
-配合二级筛选、屏蔽与标记，用来在成百上千份工程表格里快速定位目标行。
+# ExcelSearch — Keyword Search for Excel Workbooks
 
-- **版本**：V0.3.2
-- **作者 / 发行者**：觉心恋影
-- **许可证**：**GNU GPL-3.0**（见 [LICENSE](LICENSE)）
-- **界面**：Qt 6 Widgets + 自绘 QSS —— 无边框窗口、深浅双主题、可一键关闭的控件动效
+Drop your spreadsheets into the `data` folder and search the **full content** of every file at once —
+jumping straight to the file, sheet and row that contains what you are looking for.
+Supported formats: `.xlsx` / `.xls` / `.csv` / `.docx` / `.xse` (this project's encrypted format).
 
----
-
-## 界面预览
-
-| 搜索页（浅色） | 设置页（深色） | 使用说明书（浅色） |
-|---|---|---|
-| ![搜索页](docs/images/search-light.png) | ![设置页](docs/images/settings-dark.png) | ![使用说明书](docs/images/manual-light.png) |
-
-> 截图由程序自带的离屏截图钩子生成（`--shot`），与运行时界面一致。
+- **Version**: V0.3.2
+- **License**: GNU GPL-3.0 (see [LICENSE](LICENSE))
+- **UI**: Qt 6 Widgets with hand-written QSS (frameless window, light/dark themes, switchable widget animations)
+- **Platform**: Windows 10 / 11 x64
 
 ---
 
-## 功能
+## Features
 
-| 功能 | 说明 |
+| Feature | Description |
 |---|---|
-| **多格式检索** | `.xlsx` / `.xls` / `.csv` / `.docx` / `.xse`（加密表格） |
-| **三种搜索** | 精确搜索、**模糊搜索**（默认开启，作为精确结果的补充）、正则（前缀 `re:`） |
-| **二级筛选** | 在当前结果里继续筛；两种模式可选：**标准**（每次从基准重算，与顺序无关）/ **逐级**（层层收窄） |
-| **屏蔽 / 标记** | 可屏蔽整个文件或某一行；可给行打 5 种颜色标记，并支持 `已标记颜色` 检索 |
-| **可配置智能列** | 结果表列数与列内容自定义（3–7 列），中间列可映射到任意工作簿表头列名 |
-| **搜索历史** | 可配置保留条数与时效（10 分钟 ~ 12 小时 / 关闭程序后删除） |
-| **数据源** | 离线（程序目录 `data\`）/ **共享模式**（UNC 共享目录，不可达时自动吃缓存） |
-| **缓存** | 索引落盘（`cache.dat` + 全量清单 `cache.inv`），清单精确匹配才复用 |
-| **托盘 / 关闭方式** | 可最小化到托盘；点 × 可选「直接关闭 / 最小化到托盘」，支持「不再询问」 |
-| **控件动效** | hover 过渡 / 页面切换 / 可折叠卡片 / 数值滚动 / 结果错峰等，**可用开关一键关闭** |
-| **使用说明书** | 随程序分发的**图文说明书窗口**（左侧章节导航 + 右侧正文，独立窗口、可最大化）：启动时若内容有更新会自动提示查看；可勾「下次更新前不再展示」，也可在「关于我们」页随时打开 |
-| **单实例** | 同一时间只允许一个实例（避免多实例互相覆盖配置与缓存） |
+| **Multi-format search** | `.xlsx` / `.xls` / `.csv` / `.docx` / `.xse` |
+| **Three search modes** | Exact; fuzzy (enabled by default, supplements exact hits); regular expression (prefix `re:`) |
+| **Second-stage filter** | Narrow down the current result set — *standard* (recomputed from the base set, order-independent) or *cumulative* (narrowed step by step) |
+| **Blocking / marking** | Block a whole file or a single row; mark rows in 5 colors and search the marked rows directly |
+| **Configurable columns** | The result table shows 3–7 columns; middle columns can be mapped to any header column name |
+| **Search history** | Configurable entry count and lifetime (10 minutes up to 12 hours, or cleared on exit) |
+| **Data source** | Offline (the `data\` folder next to the executable) or shared mode (UNC share, falling back to the cache when unreachable) |
+| **Cache** | On-disk index (`cache.dat`) plus a full inventory (`cache.inv`); reused only when the inventory matches exactly |
+| **Encrypted workbooks** | `.xse` files are decrypted transparently; files protected with an additional password prompt for it on first load |
+| **In-app manual** | Illustrated manual window shipped with the app (chapter list + content, standalone and maximizable), opened from the “About” page |
+| **Tray & close behaviour** | Optionally minimize to the tray; closing asks “exit now / minimize to tray”, with a “don't ask again” option |
+| **Widget animations** | Hover transitions, page transitions, collapsible cards, rolling numbers — can be disabled with one switch |
+| **Single instance** | Only one instance runs at a time, so config and cache are never overwritten by a second copy |
 
-## 支持的文件格式
+> Files that cannot be parsed or are corrupt are skipped and summarized after loading — they never abort the load.
 
-| 扩展名 | 说明 |
+## Supported file formats
+
+| Extension | Description |
 |---|---|
-| `.xlsx` | Excel 2007+（可含多工作表） |
+| `.xlsx` | Excel 2007+ (multiple sheets supported) |
 | `.xls` | Excel 97-2003 |
-| `.csv` | 逗号分隔文本（自动识别编码） |
-| `.docx` | Word 文档（按段落/表格提取文本） |
-| `.xse` | 本项目的加密表格格式；若由「附加密码」加密，首次加载会提示输入 |
-
-> 无法解析或损坏的文件会被**跳过并汇总提示**（不会中断加载）。
+| `.csv` | Comma-separated text (encoding auto-detected) |
+| `.docx` | Word documents (paragraph and table text is extracted) |
+| `.xse` | This project's encrypted workbook format |
 
 ---
 
-## 构建
+## Project layout and implementation
 
-### 环境要求
+| Part | Files | Implementation |
+|---|---|---|
+| UI and application logic | `main.cpp` | Single-file Qt 6 Widgets implementation; QSS themes (light/dark plus accent color); frameless custom title bar (`startSystemMove` / `startSystemResize`); settings via `QSettings` (INI); single instance via `QLocalServer` / `QLocalSocket`; manual window rendered with `QTextBrowser::setMarkdown` |
+| Search core | `search_engine.*` | C++17 indexing and retrieval: exact, regular expression and fuzzy matching (rapidfuzz scoring); both second-stage filter modes; blocking and marking; search history |
+| Format readers | `xlsx_reader.*`, `xls_reader.*`, `csv_reader.*`, `docx_reader.*` | xlsx/docx: zip unpacking with miniz plus XML parsing with pugixml (including shared strings); xls: libxls (BIFF8); csv: hand-written delimiter/quote state machine; encoding conversion through win_iconv |
+| Encrypted workbook codec | `xse_codec.*` | `XSE1` container: AES-256-GCM encryption with a PBKDF2-HMAC-SHA256 derived key (16-byte salt, 100,000 iterations); payload serialized in the project's own `XSPD` format |
+| Platform crypto backend | `crypto_win.cpp` | Windows BCrypt implementation of the `core/crypto.h` interface: random bytes, PBKDF2, AES-256-GCM |
+| Cross-platform base | `core/` | Abstraction layer for file I/O and the crypto interface (interface separated from the platform backend) |
+| Pinyin matching | `pinyin.*`, `pinyin_table.inc`, `gen_pinyin.py` | Pinyin and initials matching against a generated lookup table (`gen_pinyin.py` produces the table) |
+| Third-party libraries | `thirdparty/` | miniz (ZIP), pugixml (XML), libxls (legacy xls), win_iconv (encoding conversion), rapidfuzz (fuzzy matching) |
+| Resources and manifest | `app.ico`, `app_icon.qrc`, `manual.qrc`, `app_qt.rc`, `app_qt.manifest` | Application icon, embedded manual copy, version resource, application manifest (`asInvoker` with PerMonitorV2 high-DPI support) |
+| Build definition | `CMakeLists.txt` | CMake ≥ 3.20; Qt 6 modules Widgets / Network; `AUTOMOC` / `AUTORCC`; GUI subsystem (`WIN32_EXECUTABLE`); optional compile-time injection of a local secrets file |
+| Deployment script | `tools/deploy.ps1` | Portable build packaging: complete the dependency closure → recursive dependency verification → launch test with a stripped PATH → collect third-party licenses → create an empty `data\` |
+| Installer | `tools/build-installer.ps1`, `installer/setup.iss` | Built with Inno Setup 6; administrative install with optional shortcuts; `data\` is writable by regular users; two-page uninstall wizard; silent uninstall keeps user data |
+| Self-check / smoke tests | `tools/selfcheck.ps1`, `tools/smoke.ps1` | Self-check drives the built-in offscreen hooks (`--report`, `--search`, `--filter`, `--shot`, …) and produces a screenshot matrix; smoke test creates malformed and very large files in an isolated folder and times loading and searching |
+| Sample data | `data/`, `gen_test_files.ps1` | Synthetic regression fixtures (csv / xls / docx / xse) for local verification |
+| Manual content | `MANUAL.md` | User-facing illustrated manual; shipped next to the executable, with an embedded fallback copy inside the binary |
+| License and notices | `LICENSE`, `licenses/` | The project is GPL-3.0; third-party components and replacement instructions are listed in `licenses/THIRD-PARTY-NOTICES.md` |
+| Documentation | `docs/` | Delivery verification report, open-source compliance review, and archived historical documents |
+| Change log | `CHANGELOG.md` | Version change history |
+
+---
+
+## Building
+
+### Requirements
 
 - Windows 10 / 11 **x64**
-- **MSYS2 + MinGW-w64**（实测 g++ 16.1）
-- **Qt 6**（模块：Widgets、Network）
-- CMake ≥ 3.20、Ninja
+- **Qt 6** (modules: Widgets, Network)
+- **CMake ≥ 3.20** with **Ninja**
+- Compiler: **MinGW-w64** (MSYS2, verified with g++ 16.1) or MSVC
+- Optional: **Inno Setup 6** (to build the installer) and **PowerShell 5.1+** (deployment and self-check scripts)
 
-### 构建命令
+### Build steps (MinGW example)
 
 ```powershell
 $env:PATH = "C:\msys64\mingw64\bin;" + $env:PATH
@@ -70,153 +90,74 @@ cmake -G Ninja -S . -B build -DCMAKE_BUILD_TYPE=Release `
 cmake --build build
 ```
 
-产物：`build\bin\excel_search.exe`
+Output: `build\bin\excel_search.exe`
 
-> ⚠️ 构建前请确保**没有本程序在运行**（否则链接会因文件占用失败）。
-> 程序是 **GUI 子系统**（无控制台），因此在脚本里调用它必须用 `Start-Process -Wait`，
-> 不能依赖 PowerShell 的 `&` 等待。
+- Make sure the application is **not running** while building, otherwise linking fails because the executable is locked;
+- The program is a **GUI-subsystem** binary (no console), so scripts must launch it with `Start-Process -Wait` instead of relying on PowerShell's `&` to wait.
 
-### 部署（打包 Qt 运行时）
+### Optional: compile-time password injection
 
-直接运行编译产物需要系统装有 Qt。要发给没装 Qt 的电脑，必须一并部署运行时：
+The management password can be injected at build time so that real values never live in the source:
+
+1. Copy `local_secrets.cmake.example` to `local_secrets.cmake` and set `ES_SUPER_PASSWORD` / `ES_DEFAULT_ADMIN_PASSWORD`;
+2. `local_secrets.cmake` is ignored by `.gitignore` and is not published with the repository;
+3. **The build works without that file**: the super-user channel stays disabled and the default admin password falls back to a weak built-in value (local development only).
+
+---
+
+## Deployment
+
+### Portable build (no installation)
+
+Running the compiler output directly requires Qt on the target machine. To ship it to a machine without Qt, deploy the runtime as well:
 
 ```powershell
 powershell -ExecutionPolicy Bypass -File tools\deploy.ps1
 ```
 
-脚本会：`windeployqt` → **依赖闭包补齐**（MSYS2 的 windeployqt 不带 MinGW 运行时与 Qt 传递依赖，
-实测会缺 12 个以上 DLL）→ 收录开源许可 → 生成空 `data\` → **递归依赖校验** →
-**PATH 剥离启动测试**（模拟没装 Qt 的环境）。
+The result is the portable build in `build\deploy\` — copy the whole folder and run it. It contains `excel_search.exe`,
+the Qt runtime and plugins, the MinGW runtime, `licenses\` (full third-party license texts and the bundled-library
+list), `MANUAL.md`, and an empty `data\`.
 
-产物 `build\deploy\` 即**绿色免安装版**（整目录拷走即可用）。
-
-### 生成安装包
+### Installer
 
 ```powershell
 powershell -ExecutionPolicy Bypass -File tools\build-installer.ps1
 ```
 
-> 该脚本带**自动重试**：Inno 偶尔报 `EndUpdateResource failed (110)`，那是 Windows Defender
-> 实时扫描抢占了刚生成的 Setup.exe（**不是脚本或图标问题**），重试一次即成功。
-> 另注意：改完代码后要**先跑 `deploy.ps1` 再编译安装包**，否则会把旧程序打进去。
+Output: `build\installer\ExcelSearchSetup-<version>.exe`
 
-产物：`build\installer\ExcelSearchSetup-0.3.2.exe`
-（管理员安装；桌面 / 开始菜单 / 任务栏快捷方式与安装位置均可选；
-`data\` 空着自带并**授予普通用户写权限**，装完丢文件即可用。）
-
-### 卸载
-
-- 从「设置 → 应用」/「控制面板 → 程序和功能」卸载，或直接双击安装目录下的 **`uninstall.exe`**；
-- 卸载器弹出一个**两页向导**（仿安装向导布局：粗体标题 + 灰色说明 + 底部按钮，按钮为
-  `上一步` / `下一步…` / `取消`，第二页的确认按钮变为 `卸载`）：
-  - **第 1 页 卸载选项** —— 与安装向导「任务」页同款控件（`TNewCheckListBox`）：
-    1. **删除全部数据**（勾选后下面两项**强制勾选并置灰**，不可单独取消）；
-    2. **删除 data 文件夹内的数据**（你自己的表格文件）；
-    3. **删除用户配置与索引缓存**（主题 / 屏蔽 / 标记 / 搜索历史）；
-  - **第 2 页 确认卸载** —— 逐条列出「将删除 / 将保留」的路径，可回上一步修改；
-  - 卸载完成后弹提示，明确哪些「已删除」、哪些「已保留」。
-- **静默卸载**（`uninstall.exe /VERYSILENT`）不弹任何界面，且**绝不删用户数据**（安全默认）。
-- 卸载前会**自动结束正在运行的程序**：否则程序自身与已加载的 Qt DLL / 插件被系统锁住，
-  卸载器删不掉它们，会出现"卸载成功但留下几十 MB 残骸"。本程序设置即时落盘、无未保存状态，
-  且全机单实例，故按映像名结束最多影响一个进程，安全。
-- 实现说明：Inno Setup 官方不支持自定义卸载器文件名（实测 6.7.3 无该指令），
-  因此安装结束时把 `unins000.exe` 与 `unins000.dat` **一起改名**为 `uninstall.exe` / `uninstall.dat`
-  （卸载器按**自身文件名**推导 .dat，必须同改），并同步注册表卸载入口；
-  任一步失败都会**回滚**，保证「卸载器能正常用」优先于「名字好看」。
+- The script first makes sure the deployment output is up to date (**run `deploy.ps1` before packaging after code
+  changes**, otherwise the installer would carry an older build);
+- Installation: administrative install; install location and desktop / start-menu / taskbar shortcuts are optional;
+  an empty `data\` is created and made writable for regular users;
+- Uninstallation: a two-page wizard (page 1 selects what to remove, page 2 confirms); spreadsheet data and user
+  settings can be kept; **silent uninstall (`/VERYSILENT`) shows no UI and keeps user data**.
 
 ---
 
-## 使用
+## Running and configuration
 
-1. 把表格文件放进程序目录下的 **`data\`**（安装版已自带该目录）；
-2. 启动程序 → 点「**重新加载**」（首次启动会自动加载）；
-3. 输入关键字 → 回车或点「搜索」；
-4. 需要收窄结果时，在「二级筛选」里填词再点「筛选」。
+1. Put your spreadsheets into the **`data\`** folder next to the executable (created by the installer);
+2. Start the application and click “Reload” (the first launch loads automatically);
+3. Type a keyword, then press Enter or click “Search”; use the second-stage filter to narrow the results.
 
-- 配置与缓存位置：**`%APPDATA%\ExcelSearch\`**（`config.ini` / `cache.dat` / `cache.inv`）
-  —— 与旧版本同目录，升级不会丢设置。
-- 程序以**普通用户权限**运行（`asInvoker`），不需要管理员。
+- The application runs with **regular user privileges** (`asInvoker`); no administrator rights are needed;
+- Settings and cache live in **`%APPDATA%\ExcelSearch\`** (`config.ini`, `cache.dat`, `cache.inv`);
+- Settings stored in the registry by the older V0.3.0 are **migrated automatically on first launch** into
+  `config.ini` (the registry entries are kept read-only).
 
-### 从旧版（V0.3.0）升级
+---
 
-旧版把设置存在**注册表** `HKCU\Software\ExcelSearch`，本版改用 `config.ini`。
-**首次启动会自动搬迁一次**，带过来：管理密码 / 深色主题 / 屏蔽（文件级与条目级）/ 标记 /
-搜索历史 / 共享模式与共享路径。
+## License and third-party components
 
-- 注册表**只读、原样保留** —— 想回退到旧版，设置还在；
-- **已废弃的设置项不再迁移**：自定义窗口标题 / 应用图标 / 窗口透明度 / 毛玻璃（旧版的后台功能）；
-- 旧版有**两级历史**（一级搜索 + 二级筛选），本版只保留一级搜索历史，故只迁前者；
-- 搬迁只做一次（`config.ini` 里记 `meta/registryMigrated`）。客服排障可手动重跑：
-
-```powershell
-Start-Process .\excel_search.exe -ArgumentList @('--migrate','--out','migrate.txt') -Wait
-```
-
-## 自检与回归
-
-程序内置无头自检钩子（结果**写文件**，因为 GUI 子系统没有控制台）：
-
-```powershell
-$exe = "build\bin\excel_search.exe"
-$env:QT_QPA_PLATFORM = "offscreen"
-
-Start-Process $exe -ArgumentList @('--report', 'out.txt') -Wait      # 加载规模/缓存/屏蔽标记等
-Start-Process $exe -ArgumentList @('--search','工日','--out','s.txt') -Wait
-Start-Process $exe -ArgumentList @('--shot','ui.png','--dark') -Wait # 离屏截图
-Start-Process $exe -ArgumentList @('--migrate','--out','m.txt') -Wait # 强制重跑旧版设置搬迁
-Start-Process $exe -ArgumentList @('--help') -Wait                   # 其余钩子见源码 main()
-```
-
-一键回归脚本：
-
-| 脚本 | 用途 |
-|---|---|
-| `tools\selfcheck.ps1 [-NoAnim]` | 业务字段 + **13 张截图矩阵**（浅/深色 × 搜索页/设置页/解锁层/关闭对话框） |
-| `tools\smoke.ps1` | 性能与健壮性冒烟：畸形文件 + 10 万行大文件 + 计时（隔离目录，不动 `data\`） |
-| `tools\deploy.ps1` | 部署 + 依赖校验 + 无 Qt 环境启动测试 |
-
-**关闭动效**（截图/回归必须带，否则会拍到动画中间态）：环境变量 `EXCELSEARCH_NO_ANIM=1`
-或命令行 `--no-anim`。
-
-## 目录结构
-
-```
-main.cpp             全部界面与业务编排（Qt，单文件）
-search_engine.*      索引与检索核心
-xlsx_reader.*  xls_reader.*  csv_reader.*  docx_reader.*   各格式解析
-xse_codec.*          加密表格（.xse）编解码
-crypto_win.cpp       Windows 平台加密实现（BCrypt）
-core/                跨平台基础（文件 IO、加密接口）
-pinyin.*             拼音/简拼匹配
-thirdparty/          miniz / pugixml / libxls / win_iconv / rapidfuzz
-licenses/            第三方许可清单与声明（许可证全文随发行包分发）
-docs/                验证报告 / 合规核查 / 归档文档
-tools/               部署、自检、冒烟脚本
-installer/           Inno Setup 安装脚本
-app_qt.rc            版本资源（版本号 / 图标 / 清单）
-app_qt.manifest      应用清单（asInvoker + PerMonitorV2 高 DPI）
-```
-
-## 第三方组件与致谢
-
-本程序以**动态链接**方式使用 **Qt 6（LGPL-3.0）**；另静态编译了
-miniz(MIT) / pugixml(MIT) / rapidfuzz(MIT) / libxls(BSD) / win_iconv(Public Domain)。
-第三方组件清单、版权与替换说明见 [`licenses/THIRD-PARTY-NOTICES.md`](licenses/THIRD-PARTY-NOTICES.md)；
-**各许可证全文**由 `tools/deploy.ps1` 在打包时自动从构建环境收集，随发行包放在安装目录的
-`licenses/`（含 `Qt-LGPL-3.0-only.txt`、`MIT.txt`、`BSD-2-Clause.txt` 等，另附 `BUNDLED-LIBRARIES.txt` 依赖清单）。
-
-界面**视觉风格**与**说明书弹窗的交互方式**（读到底才能关闭、未读完点「确认」会被拦下、
-「下次更新前不再展示」的记忆语义）参考了 [MAA / MaaWpfGui](https://github.com/MaaAssistantArknights/MaaAssistantArknights)
-与 [MaaEnd](https://github.com/MaaEnd/MaaEnd)。二者均为 **AGPL-3.0** 项目，本项目**未使用、未复制其任何
-源代码、样式表、XAML 或资源文件**——界面与弹窗均为本项目自有的 C++/Qt 实现，此处为出于尊重的自愿致谢；
-核查过程与证据见 [`docs/LICENSE-COMPLIANCE.md`](docs/LICENSE-COMPLIANCE.md)。
-
-## 文档
-
-| 文档 | 说明 |
-|---|---|
-| [`CHANGELOG.md`](CHANGELOG.md) | 版本改动记录（自 V0.3.2 起） |
-| [`docs/VERIFICATION.md`](docs/VERIFICATION.md) | 本版交付验证报告（构建 / 部署 / 安装包 / 功能 / 性能实测） |
-| [`docs/LICENSE-COMPLIANCE.md`](docs/LICENSE-COMPLIANCE.md) | 开源合规性核查记录（含 MAA / MaaEnd 使用核查） |
-| [`docs/prototype-archive/`](docs/prototype-archive/) | Qt 原型期的设计与迁移记录（回迁清单、动效设计、缓存验证、冒烟报告等） |
-| [`docs/archive/`](docs/archive/) | V0.3.0（Win32 版）时期文档，仅作沿革参考 |
+- This project is released under **GPL-3.0**; the full text is in [`LICENSE`](LICENSE);
+- **Qt 6** is used through **dynamic linking** (LGPL-3.0); the following are compiled in: miniz (MIT),
+  pugixml (MIT), rapidfuzz (MIT), libxls (BSD), win_iconv (Public Domain);
+- The component list, copyright notices and replacement instructions are in
+  [`licenses/THIRD-PARTY-NOTICES.md`](licenses/THIRD-PARTY-NOTICES.md); the full license texts are collected by
+  `tools\deploy.ps1` at packaging time and shipped in the `licenses\` folder of the release;
+- The visual style of the UI and the interaction of the manual dialog are inspired by
+  [MAA / MaaWpfGui](https://github.com/MaaAssistantArknights/MaaAssistantArknights) and
+  [MaaEnd](https://github.com/MaaEnd/MaaEnd); **no source code, style sheets or assets from those projects are
+  used or copied** — see [`docs/LICENSE-COMPLIANCE.md`](docs/LICENSE-COMPLIANCE.md) for the review record.
