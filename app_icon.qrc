@@ -1,0 +1,8 @@
+<!DOCTYPE RCC><RCC version="1.0">
+<!-- 程序图标：与 app_qt.rc 里内嵌的是同一个 app.ico。
+     目的：让「资源管理器 / 任务栏 / 托盘」三处图标完全一致
+     （此前托盘与任务栏用的是按强调色程序化绘制的图标，与资源管理器不一致）。 -->
+<qresource prefix="/">
+    <file>app.ico</file>
+</qresource>
+</RCC>

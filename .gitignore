@@ -1,0 +1,23 @@
+# 构建产物（CMake/Ninja 输出、部署目录、安装包、自检产物）
+build/
+
+# 编译中间产物
+*.obj
+*.o
+*.a
+*.lib
+*.pdb
+*.ilk
+
+# 上一代 Win32 界面源码：本地存档，不随本仓库发布（本版已全面改为 Qt6 界面）
+_win32_legacy/
+
+# 编辑器 / 系统
+.vs/
+.vscode/
+.idea/
+Thumbs.db
+desktop.ini
+
+# �����������ã���������ֵ��������⣩
+local_secrets.cmake

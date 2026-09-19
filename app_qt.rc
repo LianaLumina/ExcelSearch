@@ -1,0 +1,45 @@
+#pragma code_page(65001)
+#include <windows.h>
+#include <winres.h>
+
+// V0.3.2 Qt 版资源脚本（原 app.rc 属于 Win32 版，保留不动；本文件只给 Qt 构建用）
+// 内容：程序图标（沿用原版 app.ico）+ 清单（asInvoker + PerMonitorV2）+ 版本信息
+
+#define IDI_APP_ICON 101
+IDI_APP_ICON ICON "app.ico"
+
+// 清单：asInvoker（不需要管理员）+ High-DPI PerMonitorV2
+1 RT_MANIFEST "app_qt.manifest"
+
+VS_VERSION_INFO VERSIONINFO
+ FILEVERSION 0,3,2,0
+ PRODUCTVERSION 0,3,2,0
+ FILEFLAGSMASK 0x3fL
+#ifdef _DEBUG
+ FILEFLAGS 0x1L
+#else
+ FILEFLAGS 0x0L
+#endif
+ FILEOS VOS_NT_WINDOWS32
+ FILETYPE VFT_APP
+ FILESUBTYPE 0x0L
+BEGIN
+    BLOCK "StringFileInfo"
+    BEGIN
+        BLOCK "080404b0"
+        BEGIN
+            VALUE "CompanyName", "觉心恋影"
+            VALUE "FileDescription", "Excel 表格关键字搜索工具"
+            VALUE "FileVersion", "0.3.2"
+            VALUE "InternalName", "excel_search"
+            VALUE "LegalCopyright", "Copyright (C) 2026 觉心恋影"
+            VALUE "OriginalFilename", "excel_search.exe"
+            VALUE "ProductName", "Excel 表格关键字搜索工具"
+            VALUE "ProductVersion", "0.3.2"
+        END
+    END
+    BLOCK "VarFileInfo"
+    BEGIN
+        VALUE "Translation", 0x804, 1200
+    END
+END
