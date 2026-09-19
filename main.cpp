@@ -92,6 +92,7 @@
 #include "dialogs.h"
 #include "manual_window.h"
 #include "data_model.h"
+#include "loading.h"
 
 
 // ============================================================================
@@ -160,228 +161,19 @@ static inline QEasingCurve curveCount() { return QEasingCurve(QEasingCurve::OutE
 // curve 可换：位置/旋转类属性用 curveSpring()，颜色类一律用 curveStandard()（颜色过冲会被看成"闪"）。
 
 
-static bool readAllBytes(const std::string& path, std::vector<uint8_t>& out) {
-    namespace fs = std::filesystem;
-    std::ifstream f(fs::u8path(path), std::ios::binary);
-    if (!f) return false;
-    out.assign(std::istreambuf_iterator<char>(f), std::istreambuf_iterator<char>());
-    return !out.empty();
-}
 
-static bool _rI32(const uint8_t*& p, const uint8_t* end, int32_t& v) { if (end - p < 4) return false; memcpy(&v, p, 4); p += 4; return true; }
-static bool _rI64(const uint8_t*& p, const uint8_t* end, int64_t& v) { if (end - p < 8) return false; memcpy(&v, p, 8); p += 8; return true; }
 
 // 数据目录里所有可加载文件的磁盘信息（文件名/路径/mtime原始计数/size）
-static bool collectDiskFiles(const std::string& dataDir, std::vector<DiskFile>& out) {
-    namespace fs = std::filesystem;
-    std::error_code ec;
-    fs::path dir(fs::u8path(dataDir));
-    if (!fs::is_directory(dir, ec)) return false;
-    for (auto& e : fs::directory_iterator(dir, ec)) {
-        if (!e.is_regular_file(ec)) continue;
-        std::string fn = e.path().filename().u8string();
-        std::string ext; { std::string s = e.path().extension().u8string(); for (char& ch : s) ch = (char)tolower((unsigned char)ch); ext = s; }
-        if (ext != ".xlsx" && ext != ".xls" && ext != ".csv" && ext != ".docx" && ext != ".xse") continue;
-        DiskFile d; d.fn = fn; d.path = e.path().u8string();
-        std::error_code ec2;
-        auto ftime = fs::last_write_time(e.path(), ec2);
-        if (!ec2) d.mtime = (int64_t)ftime.time_since_epoch().count();   // 原始 file_clock 计数值：稳定可复现
-        std::error_code ec3;
-        d.size = (int64_t)e.file_size(ec3);
-        out.push_back(std::move(d));
-    }
-    return true;
-}
 
 // 缓存清单文件（cache.inv）：记录写入时刻数据目录「全量」文件(fn,mtime,size)，作为缓存是否可复用的唯一凭据。
 // 只在清单逐项精确相等（数量/文件名/mtime/size 全部一致）时才允许复用索引，绝不因 .xse 跳过态而放宽。
-static void _wI32(std::string& o, int32_t v) { o.append(reinterpret_cast<const char*>(&v), 4); }
-static void _wI64(std::string& o, int64_t v) { o.append(reinterpret_cast<const char*>(&v), 8); }
-static bool writeInventory(const std::string& path, const std::vector<DiskFile>& files) {
-    std::string out; out.append("EXIV1", 5);
-    _wI64(out, (int64_t)time(nullptr));
-    _wI32(out, (int32_t)files.size());
-    for (const auto& d : files) {
-        _wI32(out, (int32_t)d.fn.size()); out.append(d.fn);
-        _wI64(out, d.mtime); _wI64(out, d.size);
-    }
-    std::ofstream f(std::filesystem::u8path(path), std::ios::binary);
-    if (!f) return false;
-    f.write(out.data(), (std::streamsize)out.size());
-    return (bool)f;
-}
-static bool readInventory(const std::string& path,
-                          std::map<std::string, std::pair<int64_t, int64_t>>& out, int64_t& ts) {
-    std::vector<uint8_t> data;
-    if (!readAllBytes(path, data)) return false;
-    if (data.size() < 5 + 8 + 4 || memcmp(data.data(), "EXIV1", 5) != 0) return false;
-    const uint8_t* p = data.data(); const uint8_t* end = data.data() + data.size();
-    p += 5;
-    if (!_rI64(p, end, ts)) return false;
-    int32_t cnt; if (!_rI32(p, end, cnt)) return false;
-    if (cnt < 0 || cnt > 100000) return false;
-    for (int32_t i = 0; i < cnt; i++) {
-        int32_t len; if (!_rI32(p, end, len)) return false;
-        if (len < 0 || len > 1024 * 1024 || p + len > end) return false;
-        std::string fn(reinterpret_cast<const char*>(p), len); p += len;
-        int64_t mt, sz;
-        if (!_rI64(p, end, mt)) return false;
-        if (!_rI64(p, end, sz)) return false;
-        out[fn] = { mt, sz };
-    }
-    return true;
-}
 
 // 解密 .xse -> SheetData 列表（worker 与主线程共用；pwdEnabled 输出该文件是否启用附加密码）
-static bool xseToSheets(const std::string& path, const std::string& pwd,
-                        std::vector<SheetData>& sheets, bool& pwdEnabled) {
-    std::vector<uint8_t> container;
-    if (!readAllBytes(path, container)) return false;
-    if (container.size() < 5 || memcmp(container.data(), "XSE1", 4) != 0) return false;
-    std::vector<uint8_t> plain; int64_t m = 0, s = 0; std::string e; bool pe = false;
-    if (!xse::decryptData(container, pwd, plain, &m, &s, &e, &pe)) { pwdEnabled = pe; return false; }
-    pwdEnabled = pe;
-    std::vector<XseFileEntry> entries;
-    if (!xse::deserializePayload(plain, entries)) return false;
-    for (const auto& ent : entries) {
-        for (const auto& [nm, rows] : ent.sheets) {
-            SheetData sd; sd.name = nm; sd.rows = rows;
-            auto it = ent.headers.find(nm); if (it != ent.headers.end()) sd.headers = it->second;
-            sheets.push_back(std::move(sd));
-        }
-    }
-    return !sheets.empty();
-}
 
-static std::string _esc(const std::string& s) { std::string r; for (char c : s) { if (c == '&') r += "&amp;"; else if (c == '<') r += "&lt;"; else if (c == '>') r += "&gt;"; else if (c == '"') r += "&quot;"; else r += c; } return r; }
-static std::string _colRef(int idx) { std::string r; idx++; while (idx > 0) { idx--; r = char('A' + (idx % 26)) + r; idx /= 26; } return r; }
-static bool exportXlsxTo(const std::vector<SearchResult>& sel, const std::string& outPath) {
-    if (sel.empty()) return false;
-    std::set<int> allCols; int maxCol = 0;
-    for (const auto& r : sel) { for (const auto& [c, _] : r.rowCells) { allCols.insert(c); if (c > maxCol) maxCol = c; } }
-    std::vector<int> cols(allCols.begin(), allCols.end());
-    std::vector<std::string> ss; std::map<std::string, int> ssIdx;
-    auto getIdx = [&](const std::string& v) -> int { auto it = ssIdx.find(v); if (it != ssIdx.end()) return it->second; int i = (int)ss.size(); ss.push_back(v); ssIdx[v] = i; return i; };
-    auto headers = sel.front().headers;
-    std::string sheet = "<?xml version=\"1.0\" encoding=\"UTF-8\" standalone=\"yes\"?>\n<worksheet xmlns=\"http://schemas.openxmlformats.org/spreadsheetml/2006/main\"><sheetData>\n";
-    sheet += "<row r=\"1\">";
-    for (int ci = 0; ci < (int)cols.size(); ci++) { int c = cols[ci]; std::string v = (c < (int)headers.size() && !headers[c].empty()) ? headers[c] : ""; sheet += "<c r=\"" + _colRef(ci) + "1\" t=\"s\"><v>" + std::to_string(getIdx(v)) + "</v></c>"; }
-    sheet += "</row>\n";
-    int rowOut = 2;
-    for (const auto& r : sel) {
-        sheet += "<row r=\"" + std::to_string(rowOut) + "\">";
-        for (int ci = 0; ci < (int)cols.size(); ci++) { int c = cols[ci]; auto it = r.rowCells.find(c); if (it == r.rowCells.end() || it->second.empty()) continue; sheet += "<c r=\"" + _colRef(ci) + std::to_string(rowOut) + "\" t=\"s\"><v>" + std::to_string(getIdx(it->second)) + "</v></c>"; }
-        sheet += "</row>\n"; rowOut++;
-    }
-    sheet += "</sheetData></worksheet>";
-    std::string ssXml = "<?xml version=\"1.0\" encoding=\"UTF-8\" standalone=\"yes\"?>\n<sst xmlns=\"http://schemas.openxmlformats.org/spreadsheetml/2006/main\" count=\"" + std::to_string(ss.size()) + "\" uniqueCount=\"" + std::to_string(ss.size()) + "\">";
-    for (const auto& s : ss) ssXml += "<si><t xml:space=\"preserve\">" + _esc(s) + "</t></si>";
-    ssXml += "</sst>";
-    std::string ct = "<?xml version=\"1.0\" encoding=\"UTF-8\" standalone=\"yes\"?>\n<Types xmlns=\"http://schemas.openxmlformats.org/package/2006/content-types\"><Default Extension=\"rels\" ContentType=\"application/vnd.openxmlformats-package.relationships+xml\"/><Default Extension=\"xml\" ContentType=\"application/xml\"/><Override PartName=\"/xl/workbook.xml\" ContentType=\"application/vnd.openxmlformats-officedocument.spreadsheetml.sheet.main+xml\"/><Override PartName=\"/xl/worksheets/sheet1.xml\" ContentType=\"application/vnd.openxmlformats-officedocument.spreadsheetml.worksheet+xml\"/><Override PartName=\"/xl/sharedStrings.xml\" ContentType=\"application/vnd.openxmlformats-officedocument.spreadsheetml.sharedStrings+xml\"/><Override PartName=\"/xl/styles.xml\" ContentType=\"application/vnd.openxmlformats-officedocument.spreadsheetml.styles+xml\"/></Types>";
-    std::string rels = "<Relationships xmlns=\"http://schemas.openxmlformats.org/package/2006/relationships\"><Relationship Id=\"rId1\" Type=\"http://schemas.openxmlformats.org/officeDocument/2006/relationships/officeDocument\" Target=\"xl/workbook.xml\"/></Relationships>";
-    std::string wbRels = "<Relationships xmlns=\"http://schemas.openxmlformats.org/package/2006/relationships\"><Relationship Id=\"rId1\" Type=\"http://schemas.openxmlformats.org/officeDocument/2006/relationships/worksheet\" Target=\"worksheets/sheet1.xml\"/><Relationship Id=\"rId2\" Type=\"http://schemas.openxmlformats.org/officeDocument/2006/relationships/sharedStrings\" Target=\"sharedStrings.xml\"/><Relationship Id=\"rId3\" Type=\"http://schemas.openxmlformats.org/officeDocument/2006/relationships/styles\" Target=\"styles.xml\"/></Relationships>";
-    std::string wb = "<workbook xmlns=\"http://schemas.openxmlformats.org/spreadsheetml/2006/main\" xmlns:r=\"http://schemas.openxmlformats.org/officeDocument/2006/relationships\"><sheets><sheet name=\"Sheet1\" sheetId=\"1\" r:id=\"rId1\"/></sheets></workbook>";
-    std::string styles = "<?xml version=\"1.0\" encoding=\"UTF-8\" standalone=\"yes\"?>\n<styleSheet xmlns=\"http://schemas.openxmlformats.org/spreadsheetml/2006/main\"><fonts count=\"1\"><font><sz val=\"11\"/><name val=\"Calibri\"/></font></fonts><fills count=\"2\"><fill><patternFill patternType=\"none\"/></fill><fill><patternFill patternType=\"gray125\"/></fill></fills><borders count=\"1\"><border><left/><right/><top/><bottom/><diagonal/></border></borders><cellStyleXfs count=\"1\"><xf numFmtId=\"0\" fontId=\"0\" fillId=\"0\" borderId=\"0\"/></cellStyleXfs><cellXfs count=\"1\"><xf numFmtId=\"0\" fontId=\"0\" fillId=\"0\" borderId=\"0\" xfId=\"0\"/></cellXfs></styleSheet>";
-    mz_zip_archive z; memset(&z, 0, sizeof(z));
-    if (!mz_zip_writer_init_heap(&z, 0, 0)) return false;
-    mz_zip_writer_add_mem(&z, "[Content_Types].xml", ct.c_str(), ct.size(), MZ_BEST_COMPRESSION);
-    mz_zip_writer_add_mem(&z, "_rels/.rels", rels.c_str(), rels.size(), MZ_BEST_COMPRESSION);
-    mz_zip_writer_add_mem(&z, "xl/workbook.xml", wb.c_str(), wb.size(), MZ_BEST_COMPRESSION);
-    mz_zip_writer_add_mem(&z, "xl/_rels/workbook.xml.rels", wbRels.c_str(), wbRels.size(), MZ_BEST_COMPRESSION);
-    mz_zip_writer_add_mem(&z, "xl/worksheets/sheet1.xml", sheet.c_str(), sheet.size(), MZ_BEST_COMPRESSION);
-    mz_zip_writer_add_mem(&z, "xl/sharedStrings.xml", ssXml.c_str(), ssXml.size(), MZ_BEST_COMPRESSION);
-    mz_zip_writer_add_mem(&z, "xl/styles.xml", styles.c_str(), styles.size(), MZ_BEST_COMPRESSION);
-    void* out = nullptr; size_t os = 0; mz_zip_writer_finalize_heap_archive(&z, &out, &os); mz_zip_writer_end(&z);
-    if (!out || os == 0) return false;
-    std::ofstream f(std::filesystem::u8path(outPath), std::ios::binary);
-    if (!f) { mz_free(out); return false; }
-    f.write((const char*)out, (std::streamsize)os); f.close(); mz_free(out);
-    return true;
-}
 
-class LoadWorker : public QThread {
-    Q_OBJECT
-public:
-    std::string dataDir;
-    bool addPwdEnabled = false;
-    std::string addPwd;
-    std::vector<Doc> docs;
-    std::vector<std::pair<std::string, std::string>> pendingXse;   // 需要附加密码的 .xse (fn, path)
-    // ★产品化（首次运行体验）：把"没读进来的文件"记下来，加载结束后汇总提示。
-    //   否则用户把文件丢进 data\ 却没生效时，完全不知道发生了什么。
-    std::vector<std::string> failed;      // 读取失败（格式不符 / 文件损坏 / 加密文件无法解密）
-    std::vector<std::string> emptyData;   // 能打开但没有有效数据（空文件 / 只有空表）
-    // 共享模式：目录不可达（主机不可达/无权限/路径不存在）。置位后主线程走缓存兜底，
-    // 且**绝不回写缓存**——否则断网一次就会把好缓存覆盖成空索引。
-    bool unreachable = false;
-    void run() override {
-        namespace fs = std::filesystem;
-        std::error_code ec;
-        fs::path dir(fs::u8path(dataDir));
-        std::vector<std::pair<std::string, std::string>> files;
-        if (fs::is_directory(dir, ec)) {
-            for (auto& e : fs::directory_iterator(dir, ec)) {
-                if (!e.is_regular_file(ec)) continue;
-                std::string fn = e.path().filename().u8string();
-                std::string ext; { std::string s = e.path().extension().u8string(); for (char& ch : s) ch = (char)tolower((unsigned char)ch); ext = s; }
-                if (ext == ".xlsx" || ext == ".xls" || ext == ".csv" || ext == ".docx" || ext == ".xse") files.push_back({ fn, e.path().u8string() });
-            }
-        }
-        if (ec || !fs::is_directory(dir, ec)) { unreachable = true; return; }   // 探测失败：交给主线程兜底
-        int total = (int)files.size();
-        for (int i = 0; i < total; i++) {
-            const std::string& fn = files[i].first;
-            const std::string& path = files[i].second;
-            std::vector<SheetData> sheets; bool ok = false;
-            bool needPwd = false;
-            std::string ext; { std::string s = path; size_t p = s.rfind('.'); ext = (p == std::string::npos) ? "" : s.substr(p); for (char& ch : ext) ch = (char)tolower((unsigned char)ch); }
-            if (ext == ".xlsx")      { XlsxReader r; ok = r.open(path); if (ok) sheets = r.getSheets(); }
-            else if (ext == ".xls")  { XlsReader r;  ok = r.open(path); if (ok) sheets = r.getSheets(); }
-            else if (ext == ".csv")  { CsvReader r;  ok = r.open(path); if (ok) sheets = r.getSheets(); }
-            else if (ext == ".docx") { DocxReader r; ok = r.open(path); if (ok) sheets = r.getSheets(); }
-            else if (ext == ".xse") {
-                bool pwdEnabled = false;
-                std::string pwd = addPwdEnabled ? addPwd : "";
-                ok = xseToSheets(path, pwd, sheets, pwdEnabled);
-                if (!ok && pwdEnabled) { pendingXse.push_back({ fn, path }); needPwd = true; }
-            }
-            if (ok && !sheets.empty()) docs.push_back({ fn, sheets });
-            else if (needPwd) { /* 待主线程补问附加密码，不算失败 */ }
-            else if (ok) emptyData.push_back(fn);   // 打开成功但没有任何有效数据
-            else failed.push_back(fn);              // 真正读取失败
-            emit progress(i + 1, total, QString::fromUtf8(fn.c_str()));
-        }
-    }
-signals:
-    void progress(int done, int total, QString file);
-};
 
 // 共享目录连通性探测：UNC 的 exists() 可能阻塞数秒到数十秒，必须放在 worker 线程，
 // 否则界面会像卡死。结果通过 finished 回主线程，自动串行"测试 → 成功才强制重载"。
-class ProbeWorker : public QThread {
-    Q_OBJECT
-public:
-    std::string path;
-    bool ok = false;
-    std::string detail;   // 失败原因（区分"路径不存在/主机不可达"与"拒绝访问"）
-    void run() override {
-        namespace fs = std::filesystem;
-        std::error_code ec;
-        fs::path p(fs::u8path(path));
-        const bool isDir = fs::is_directory(p, ec);
-        ok = isDir && !ec;
-        if (ok) { detail = "OK"; return; }
-        // 尽量把"没找到"和"拒绝访问"分开，避免用户查错方向
-        std::error_code ec2;
-        const bool exists = fs::exists(p, ec2);
-        if (!exists && !ec2)            detail = "路径不存在";
-        else if (ec2 && ec2.value() == 5) detail = "拒绝访问（权限不足）";
-        else if (!exists)               detail = "主机或路径不可达";
-        else                            detail = "无法访问（" + ec.message() + "）";
-    }
-signals:
-    void finished();
-};
 
 
 // 按钮"实际压在什么颜色上"（panelBg 或卡片 card）。
