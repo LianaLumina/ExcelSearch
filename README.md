@@ -189,7 +189,7 @@ crypto_win.cpp       Windows 平台加密实现（BCrypt）
 core/                跨平台基础（文件 IO、加密接口）
 pinyin.*             拼音/简拼匹配
 thirdparty/          miniz / pugixml / libxls / win_iconv / rapidfuzz
-licenses/            第三方组件许可与声明
+licenses/            第三方许可清单与声明（许可证全文随发行包分发）
 docs/                开源合规核查等文档
 tools/               部署、自检、冒烟脚本
 installer/           Inno Setup 安装脚本
@@ -201,7 +201,9 @@ app_qt.manifest      应用清单（asInvoker + PerMonitorV2 高 DPI）
 
 本程序以**动态链接**方式使用 **Qt 6（LGPL-3.0）**；另静态编译了
 miniz(MIT) / pugixml(MIT) / rapidfuzz(MIT) / libxls(BSD) / win_iconv(Public Domain)。
-完整许可与版权声明见 [`licenses/`](licenses/)。
+第三方组件清单、版权与替换说明见 [`licenses/THIRD-PARTY-NOTICES.md`](licenses/THIRD-PARTY-NOTICES.md)；
+**各许可证全文**由 `tools/deploy.ps1` 在打包时自动从构建环境收集，随发行包放在安装目录的
+`licenses/`（含 `Qt-LGPL-3.0-only.txt`、`MIT.txt`、`BSD-2-Clause.txt` 等，另附 `BUNDLED-LIBRARIES.txt` 依赖清单）。
 
 界面**视觉风格**参考了 [MAA / MaaWpfGui](https://github.com/MaaAssistantArknights/MaaAssistantArknights)
 与 [MaaEnd](https://github.com/MaaEnd/MaaEnd) —— **仅为风格参考，未使用其任何代码或资源**；
