@@ -91,6 +91,7 @@
 #include "widgets.h"
 #include "dialogs.h"
 #include "manual_window.h"
+#include "data_model.h"
 
 
 // ============================================================================
@@ -158,7 +159,6 @@ static inline QEasingCurve curveCount() { return QEasingCurve(QEasingCurve::OutE
 // 关闭动效时直接落终态（0 或 1），因此在事件循环里不留任何定时器。
 // curve 可换：位置/旋转类属性用 curveSpring()，颜色类一律用 curveStandard()（颜色过冲会被看成"闪"）。
 
-struct Doc { std::string fn; std::vector<SheetData> sheets; };
 
 static bool readAllBytes(const std::string& path, std::vector<uint8_t>& out) {
     namespace fs = std::filesystem;
@@ -172,7 +172,6 @@ static bool _rI32(const uint8_t*& p, const uint8_t* end, int32_t& v) { if (end -
 static bool _rI64(const uint8_t*& p, const uint8_t* end, int64_t& v) { if (end - p < 8) return false; memcpy(&v, p, 8); p += 8; return true; }
 
 // 数据目录里所有可加载文件的磁盘信息（文件名/路径/mtime原始计数/size）
-struct DiskFile { std::string fn, path; int64_t mtime = 0, size = 0; };
 static bool collectDiskFiles(const std::string& dataDir, std::vector<DiskFile>& out) {
     namespace fs = std::filesystem;
     std::error_code ec;
@@ -490,9 +489,6 @@ signals:
 //       勾「下次更新前不再展示」→ 记住当前内容版本，内容更新后自动恢复提示（Alt+F4 同样受门禁约束）。
 // 内容来源：exe 旁 `MANUAL.md`（可外部替换）→ 内嵌副本 :/manual.md 兜底。
 
-struct CardDef { QString title; bool expand; std::function<QWidget*()> make; };
-struct PageDef { QString title; std::function<QWidget*()> make; };
-struct SecDef  { QString title; std::function<QWidget*()> make; };
 
 // ============================================================================
 // 屏蔽 / 标记存储（V0.3.2）
@@ -500,7 +496,6 @@ struct SecDef  { QString title; std::function<QWidget*()> make; };
 // 持久化文本格式亦沿用原版：block/entries = "fn|sheet|row"，mark/entries = "fn|sheet|row|color"。
 // 注意：屏蔽/标记属 UI 层概念，不进索引、不进 cache.dat，因此不影响缓存命中判定。
 // ============================================================================
-using RowKey = std::tuple<std::string, std::string, int>;
 
 // 管理门禁：普通管理密码可修改；超管密码硬编码、不可修改，供开发者维护时直达
 // ★敏感口令：**构建期注入**（仓库内不保存真值）
@@ -517,24 +512,7 @@ static const char* kDefaultAdminPassword = ES_DEFAULT_ADMIN_PASSWORD;
 
 // 标记 5 色（索引沿用原版顺序：0红 1紫 2蓝 3绿 4黄）。
 // 呈现为「行首色条」而非原版的整行文字变色 —— 深色主题下更干净，也不会和斑马纹/选中蓝打架。
-static const QColor kMarkColors[5] = {
-    QColor("#E5484D"), QColor("#8B5CF6"), QColor("#326CF3"), QColor("#10B981"), QColor("#F59E0B")
-};
-static QString markColorName(int i) {
-    switch (i) {
-    case 0: return T("红色");
-    case 1: return T("紫色");
-    case 2: return T("蓝色");
-    case 3: return T("绿色");
-    case 4: return T("黄色");
-    default: return QString();
-    }
-}
 // 由色名反查色索引（原版 GetColorIndexByName），供「已标记红色」这类关键词使用
-static int markColorIndexByName(const std::string& name) {
-    for (int i = 0; i < 5; i++) if (name == markColorName(i).toUtf8().toStdString()) return i;
-    return -1;
-}
 
 // ============================================================================
 // 可配置智能列：结果表总列数 3..7。
@@ -543,88 +521,23 @@ static int markColorIndexByName(const std::string& name) {
 // 表头关键词按「表头包含 + 精确匹配加权」选列；都不命中时再用 rapidfuzz 兜底，
 // 兜底分数仍低于阈值 → 视为「列不存在」。
 // ============================================================================
-static const int    kMinResultCols = 3;
-static const int    kMaxResultCols = 7;
-static const char*  kMetaSheetCol  = "工作表";
-static const char*  kMetaRowCol    = "行号";
-static const double kColFuzzyMin   = 60.0;   // 与核心 fuzzySearch 的阈值保持一致
 
 // ★回迁注意：原版结果列表是固定 7 列（含硬编码的 核定工日/工时代码）；此处改为可配置 3–7 列，
 //   默认只放内建元数据（工作表/行号），避免数据里没有该表头时出现空列。详见 docs/回迁标注.md 第 5 条。
 // 缺省布局：只放「内建元数据」两列（工作表 / 行号），任何数据下都必然有效。
 // 注意不要把「核定工日」「工时代码」之类硬编码进默认值 —— 数据里没这一列时默认就会出现两个空列；
 // 这类智能列交给用户在「智能列设置」里按实际表头配置。
-static std::vector<std::string> defaultExtraCols() {
-    return { kMetaSheetCol, kMetaRowCol };
-}
 
 // ============================================================================
 // 搜索历史：只有「一级搜索」记录历史，二级筛选一律不记录（避免同一关键词反复入栈）。
 // 存储上限 20 条；下拉最多显示 10 条，其余到「搜索历史」设置页查看/回填。
 // 时效 = 条目存活多久后删除：最短 10 分钟，最长「关闭程序后删除」（该档完全不落盘）。
 // ============================================================================
-static const int kHistStoreMax     = 20;   // 存储上限（沿用原版 kHistoryMax）
-static const int kHistShowMax      = 10;   // 下拉最多显示条数
-static const int kHistTtlMinMinute = 10;   // 时效最短：10 分钟
 // 模糊补充的护栏：精确命中已达此数量时不再做模糊补充（见 doSearch 里的性能修复说明）
-static const size_t kFuzzySupplementMaxExact = 5000;
 // 项目开源许可证名称（发行时在此一处填写，界面与文档共用；留空则界面显示"（待定）"）
 // 例：return QStringLiteral("MIT");
 static QString projectLicense() { return QStringLiteral("GPL-3.0"); }
-struct HistItem { QString kw; qint64 ts; };
 
-struct MarkStore {
-    std::set<RowKey>      blockedEntries;   // 条目级屏蔽
-    std::set<std::string> blockedFiles;     // 文件级屏蔽
-    std::map<RowKey, int> marked;           // 标记色索引 0红 1紫 2蓝 3绿 4黄（沿用原版顺序）
-
-    bool isBlocked(const SearchResult& r) const {
-        return blockedFiles.count(r.filename) > 0 ||
-               blockedEntries.count({ r.filename, r.sheetName, r.row }) > 0;
-    }
-    int colorOf(const SearchResult& r) const {
-        auto it = marked.find({ r.filename, r.sheetName, r.row });
-        return it == marked.end() ? -1 : it->second;
-    }
-    size_t filterBlocked(std::vector<SearchResult>& v) const {   // 等价原版 FilterBlocked
-        size_t before = v.size();
-        v.erase(std::remove_if(v.begin(), v.end(),
-            [this](const SearchResult& r) { return isBlocked(r); }), v.end());
-        return before - v.size();
-    }
-    bool empty() const { return blockedEntries.empty() && blockedFiles.empty() && marked.empty(); }
-    void clearAll() { blockedEntries.clear(); blockedFiles.clear(); marked.clear(); }
-
-    void load(QSettings& s) {
-        clearAll();
-        auto splitLines = [](const QString& text) {
-            std::vector<QString> out;
-            for (const QString& ln : text.split('\n', Qt::SkipEmptyParts)) { QString t = ln.trimmed(); if (!t.isEmpty()) out.push_back(t); }
-            return out;
-        };
-        for (const QString& f : splitLines(s.value("block/files").toString())) blockedFiles.insert(f.toUtf8().toStdString());
-        for (const QString& ln : splitLines(s.value("block/entries").toString())) {
-            auto p = ln.split('|');   // fn|sheet|row
-            if (p.size() == 3) blockedEntries.insert({ p[0].toUtf8().toStdString(), p[1].toUtf8().toStdString(), p[2].toInt() });
-        }
-        for (const QString& ln : splitLines(s.value("mark/entries").toString())) {
-            auto p = ln.split('|');   // fn|sheet|row|color
-            if (p.size() == 4) marked[{ p[0].toUtf8().toStdString(), p[1].toUtf8().toStdString(), p[2].toInt() }] = p[3].toInt();
-        }
-    }
-    void save(QSettings& s) const {
-        QStringList bf, be, me;
-        for (const auto& f : blockedFiles) bf << QString::fromUtf8(f.c_str());
-        for (const auto& [fn, sn, r] : blockedEntries) be << QString::fromUtf8((fn + "|" + sn + "|" + std::to_string(r)).c_str());
-        for (const auto& [k, c] : marked) {
-            const auto& [fn, sn, r] = k;
-            me << QString::fromUtf8((fn + "|" + sn + "|" + std::to_string(r) + "|" + std::to_string(c)).c_str());
-        }
-        s.setValue("block/files", bf.join('\n'));
-        s.setValue("block/entries", be.join('\n'));
-        s.setValue("mark/entries", me.join('\n'));
-    }
-};
 
 // ============================================================================
 // 结果表 / 设置列表的行委托（定义在 MarkStore 之后：要复用标记 5 色 kMarkColors）
@@ -636,185 +549,6 @@ struct MarkStore {
 // 列表与表格的差异：列表项有 8px 圆角，故先自绘圆角底再交给基类画文字；
 //   表格有斑马纹（基类会用 backgroundBrush 铺满整行），改成设置 backgroundBrush 由基类铺。
 // ============================================================================
-class RowDelegate : public QStyledItemDelegate {
-    Q_OBJECT
-public:
-    RowDelegate(QAbstractItemView* view, const Proto& p)
-        : QStyledItemDelegate(view), m_view(view), m_hover(p.hover), m_card(p.card), m_altRow(p.altRow), m_accent(p.accent) {
-        view->setMouseTracking(true);   // cellEntered/itemEntered 需要鼠标跟踪（只增加 hover 事件，不影响选择行为）
-        view->viewport()->installEventFilter(this);
-        if (auto* t = qobject_cast<QTableWidget*>(view)) {
-            QObject::connect(t, &QTableWidget::cellEntered, this, [this](int, int row) { hoverRow(row); });
-        } else if (auto* l = qobject_cast<QListWidget*>(view)) {
-            QObject::connect(l, &QListWidget::itemEntered, this, [this, l](QListWidgetItem* it) { hoverRow(it ? l->row(it) : -1); });
-        }
-        // B3 选中态交接：选中项从 A 换到 B 时，让 A 的强调色"滑走淡出"，而不是凭空消失（空间连续性）
-        if (view->selectionModel()) {
-            QObject::connect(view->selectionModel(), &QItemSelectionModel::currentChanged, this,
-                             [this](const QModelIndex& cur, const QModelIndex& prev) { handoff(prev.row(), cur.row()); });
-        }
-    }
-    void setTheme(const Proto& p) {
-        m_hover = p.hover; m_card = p.card; m_altRow = p.altRow; m_accent = p.accent;
-        if (m_view) m_view->viewport()->update();
-    }
-    void setRounded(bool r) { m_rounded = r; }   // 列表项有 8px 圆角，表格行没有
-    void setMarkBar(bool on) { m_markBar = on; }  // 只有结果表需要首列标记色条
-    bool isTableView() const { return m_markBar; }  // 结果表（=当前唯一需要入场错峰的视图）
-    // 自检/截图用：直接把行 hover 推到指定行（委托自绘的 hover 没有真实鼠标事件可用）
-    void setHoverRow(int row) { hoverRow(row); }
-    // B1 结果表入场错峰：一次搜索/筛选后，首屏若干行的文字自上而下依次"洗"进来。
-    // 关键设计：**单动画 + 每行相位** —— progress(row) = curve(clamp((pv*total - row*step)/dur, 0, 1))，
-    //   是 pv 的确定性函数（同一帧必然渲染同一结果），不用墙上时钟、也不为每行起定时器。
-    //   超出 rows 的行直接算 1（立刻可见），避免大结果集里"越往下越慢"。
-    void startReveal(int rows) {
-        rows = qMin(rows, kRowStaggerMax);
-        const int dur = animMs(kDurSlow);
-        if (rows <= 0 || dur <= 0) {                       // 关闭动效 / 空结果：直接落终态
-            m_revealDone = true;
-            m_revealRows = 0;
-            if (m_view) m_view->viewport()->update();
-            return;
-        }
-        m_revealRows = rows;
-        m_revealTotal = dur + (rows - 1) * kRowStaggerMs;
-        m_revealDone = false;
-        if (!m_revealAnim) {
-            m_revealAnim = new QVariantAnimation(this);
-            m_revealAnim->setEasingCurve(QEasingCurve::Linear);   // 节奏由每行相位公式给，不再叠曲线
-            QObject::connect(m_revealAnim, &QVariantAnimation::valueChanged, this, [this](const QVariant& v) {
-                m_revealPv = v.toDouble();
-                if (m_view) m_view->viewport()->update();
-            });
-            QObject::connect(m_revealAnim, &QVariantAnimation::finished, this, [this] {
-                m_revealDone = true; m_revealRows = 0;
-                if (m_view) m_view->viewport()->update();
-            });
-        }
-        m_revealAnim->stop();
-        m_revealAnim->setDuration(m_revealTotal);
-        m_revealAnim->setStartValue(0.0);
-        m_revealAnim->setEndValue(1.0);
-        m_revealAnim->start();
-    }
-protected:
-    bool eventFilter(QObject* o, QEvent* e) override {
-        if (o == (m_view ? m_view->viewport() : nullptr) && e->type() == QEvent::Leave) hoverRow(-1);
-        return QStyledItemDelegate::eventFilter(o, e);
-    }
-    // 说明：hover 底色**必须自绘**，不能靠 QStyleOptionViewItem::backgroundBrush 交给基类铺 ——
-    //   本表装了 QSS（`QTableWidget::item { padding:6px; border:none }`），QStyleSheetStyle 会自己
-    //   接管 ::item 的绘制，backgroundBrush 被丢掉（实测：设了也一像素不变）。
-    //   自绘位置放在基类之前：基类随后在它上面画文字，所以文字既不被盖住也不被染色。
-    void paint(QPainter* p, const QStyleOptionViewItem& opt, const QModelIndex& idx) const override {
-        const bool hovered = (idx.row() == m_row && m_hv.v > 0.001);
-        QStyleOptionViewItem o(opt);
-        initStyleOption(&o, idx);
-        // B3 选中态交接：把"上一项"的强调色底滑走 + 淡出（画在基类之前，文字仍由基类画在最上层）
-        if (m_rounded && idx.row() == m_handRow && m_handP < 0.999) {
-            QColor c = m_accent;
-            c.setAlphaF(1.0 - m_handP);
-            QRectF r = QRectF(o.rect).adjusted(1, 1, -1, -1);
-            r.translate(0.0, m_handP * 0.4 * r.height());
-            p->save();
-            p->setRenderHint(QPainter::Antialiasing, true);
-            p->setPen(Qt::NoPen);
-            p->setBrush(c);
-            p->drawRoundedRect(r, 8, 8);
-            p->restore();
-        }
-        if (hovered && !(o.state & QStyle::State_Selected)) {
-            QColor c = m_hover;
-            c.setAlphaF(c.alphaF() * m_hv.v);   // 令牌色 × 过渡进度
-            p->save();
-            p->setRenderHint(QPainter::Antialiasing, true);
-            p->setPen(Qt::NoPen);
-            p->setBrush(c);
-            if (m_rounded) p->drawRoundedRect(QRectF(o.rect).adjusted(1, 1, -1, -1), 8, 8);   // 与 QSS item 的 8px 圆角一致
-            else           p->fillRect(o.rect, c);                                            // 表格行：铺满整行
-            p->restore();
-        }
-        QStyledItemDelegate::paint(p, o, idx);   // 背景与文字仍走默认绘制（QSS 主题、选中优先级不变）
-        // B1 入场错峰：用"该行底色"以 (1-进度) 的透明度盖一层，把文字"洗"进来。
-        //   为什么用盖而不是改 palette/直接画字：装了 QSS 的表格里，item 的文字色由 QStyleSheetStyle
-        //   自己配置 palette，改 option.palette 不一定生效；盖一层底色是 QSS 无关的确定性做法。
-        if (!m_revealDone && !(o.state & QStyle::State_Selected)) {
-            const qreal rp = rowReveal(idx.row());
-            if (rp < 0.999) {
-                QColor c = (idx.row() % 2) ? m_altRow : m_card;
-                c.setAlphaF(1.0 - rp);
-                p->fillRect(o.rect, c);
-            }
-        }
-        // 标记色条只属于结果表首列：列表没有标记这回事，且列表项的 Qt::UserRole 是空的，
-        // toInt() 会给出 0（=红色）→ 不判断视图类型就会在每个列表项左边画一条红杠。
-        if (!m_markBar || idx.column() != 0) return;
-        int ci = idx.data(Qt::UserRole).toInt();
-        if (ci < 0 || ci >= 5) return;
-        const QRect r = opt.rect;
-        QRect bar(r.left() + 1, r.top() + 4, 3, std::max(4, r.height() - 8));
-        p->save();
-        p->setRenderHint(QPainter::Antialiasing, true);
-        p->setPen(Qt::NoPen);
-        p->setBrush(kMarkColors[ci]);
-        p->drawRoundedRect(bar, 1.5, 1.5);
-        p->restore();
-    }
-private:
-    void hoverRow(int row) {
-        if (row == m_row) return;
-        m_row = row;
-        m_hv.to(this, row >= 0, [this](qreal) { if (m_view) m_view->viewport()->update(); });
-    }
-    // 每行在入场时间线上的进度（pv 的确定性函数）
-    qreal rowReveal(int row) const {
-        if (m_revealDone || row < 0 || row >= m_revealRows) return 1.0;
-        const qreal t = m_revealPv * m_revealTotal;                                  // 当前时间线位置（ms）
-        const qreal local = qBound(0.0, (t - row * kRowStaggerMs) / (qreal)animMs(kDurSlow), 1.0);
-        return curveStandard().valueForProgress(local);
-    }
-    // B3：上一选中项 → 新选中项的交接触发（只在列表上用；表格选中是整行强调色，不需要这个提示）
-    void handoff(int prevRow, int newRow) {
-        if (!m_rounded || prevRow < 0 || prevRow == newRow) return;
-        const int dur = animMs(140);
-        if (dur <= 0) return;
-        m_handRow = prevRow;
-        m_handP = 0.0;
-        if (!m_handAnim) {
-            m_handAnim = new QVariantAnimation(this);
-            m_handAnim->setEasingCurve(curveExit());
-            QObject::connect(m_handAnim, &QVariantAnimation::valueChanged, this, [this](const QVariant& v) {
-                m_handP = v.toDouble();
-                if (m_view) m_view->viewport()->update();
-            });
-            QObject::connect(m_handAnim, &QVariantAnimation::finished, this, [this] {
-                m_handRow = -1;
-                if (m_view) m_view->viewport()->update();
-            });
-        }
-        m_handAnim->stop();
-        m_handAnim->setDuration(dur);
-        m_handAnim->setStartValue(0.0);
-        m_handAnim->setEndValue(1.0);
-        m_handAnim->start();
-    }
-    QAbstractItemView* m_view = nullptr;
-    QColor m_hover, m_card, m_altRow, m_accent;
-    int m_row = -1;
-    bool m_rounded = false;   // 列表 = true（圆角自绘）；表格 = false（交给基类铺满整行）
-    bool m_markBar = false;   // 是否绘制结果表首列的标记色条（列表恒为 false）
-    HoverT m_hv;
-    // B1 入场错峰
-    QVariantAnimation* m_revealAnim = nullptr;
-    qreal m_revealPv = 0.0;
-    qreal m_revealTotal = 0.0;
-    int m_revealRows = 0;
-    bool m_revealDone = true;   // 默认"已经完成" → 没有动效时不做任何额外绘制
-    // B3 选中态交接
-    QVariantAnimation* m_handAnim = nullptr;
-    qreal m_handP = 1.0;
-    int m_handRow = -1;
-};
 
 // 给一个列表装上行 hover 过渡（沿用 MarkBarDelegate 的用法：只补画，不改默认绘制）
 // 注：原 `MarkBarDelegate` 的"行首标记色条"职责已并入上面的 RowDelegate（绘制逻辑一字未改），
@@ -839,13 +573,6 @@ static const bool kEnableUtilTab = false;          // ← 预留开关：当前�
 static QString utilTabTitle() { return T("实用工具"); }
 
 // 行悬停动效：需要 RowDelegate 的完整定义，故留在本文件（跟随 RowDelegate 一起拆分）
-static void enableRowHoverAnim(QListWidget* list, const Proto& p, std::vector<RowDelegate*>* reg) {
-    if (!list) return;
-    auto* d = new RowDelegate(list, p);
-    d->setRounded(true);
-    list->setItemDelegate(d);
-    if (reg) reg->push_back(d);
-}
 
 class AppWindow : public QWidget {
     bool m_dark = false;

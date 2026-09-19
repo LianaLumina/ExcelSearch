@@ -23,6 +23,7 @@ set(RAPIDFUZZ ${TP}/rapidfuzz)
 
 add_executable(excel_search
     main.cpp
+data_model.cpp
 manual_window.cpp
 dialogs.cpp
 widgets.cpp
