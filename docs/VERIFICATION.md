@@ -58,7 +58,7 @@
 
 | 文件 | 说明 |
 |---|---|
-| `README.md` | 项目门面：功能 / 格式 / 构建 / 部署 / 打包 / 使用 / 自检 / 目录结构 / 致谢 |
+| `README.md`（英文，主展示）/ `README.zh-CN.md`（中文） | 项目门面：功能、各部分对应文件与实现方式、构建与部署方式及条件；首行语言互跳 |
 | `LICENSE` | GPL-3.0 官方全文 |
 | `licenses\THIRD-PARTY-NOTICES.md` | 第三方组件许可 + 发行者 + 项目许可证 |
 | `docs\LICENSE-COMPLIANCE.md` | MAA/MaaEnd 代码使用核查（三类指纹） |
