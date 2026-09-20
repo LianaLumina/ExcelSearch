@@ -28,6 +28,8 @@ add_executable(excel_search
     app_window_settings_smartcols.cpp   # B4：AppWindow 的可配置智能列（从 app_window.h 搬出）
     app_window_settings_share.cpp       # B5：AppWindow 的共享模式与附加加密（从 app_window.h 搬出）
     app_window_settings_advanced.cpp    # B6：AppWindow 的高级设置（屏蔽/标记/密码/门禁）（从 app_window.h 搬出）
+    app_window_settings.cpp             # B7：设置页外壳/关于/预留工具页（从 app_window.h 搬出）
+    app_window_settings_general.cpp     # B7：通用设置页与搜索设置子卡（从 app_window.h 搬出）
 loading.cpp
 data_model.cpp
 manual_window.cpp

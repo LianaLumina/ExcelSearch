@@ -658,24 +658,8 @@ public:
     void goAdvSection(int i) { if (m_advNavList) m_advNavList->setCurrentRow(i); }
     // 高级设置的门禁栈（解锁层 ↔ 真实内容）切换（实现见 app_window_settings_advanced.cpp）
     void advGateAnim();
-    // 设置页分区切换：进入「高级设置」若未解锁则显示解锁层；离开则重新上锁
-    void onSettingsSectionChanged(int row) {
-        if (row == m_advSecIndex) {
-            const int want = m_advUnlocked ? 1 : 0;
-            const bool gateChanged = m_advGateStack && m_advGateStack->currentIndex() != want;
-            if (m_advGateStack) m_advGateStack->setCurrentIndex(want);
-            if (m_advUnlocked) {
-                refreshBlockAdmin();
-            } else {
-                if (m_advPwdEdit) { m_advPwdEdit->clear(); m_advPwdEdit->setFocus(); }
-                if (m_advErrLabel) m_advErrLabel->clear();
-            }
-            if (gateChanged) advGateAnim();   // 解锁层 / 真实内容进出都淡入
-        } else if (m_advUnlocked) {
-            m_advUnlocked = false;   // 离开「高级设置」→ 重新上锁
-            m_adminIsSuper = false;
-        }
-    }
+    // 设置页分区切换：进入「高级设置」若未解锁则显示解锁层；离开则重新上锁（实现见 app_window_settings.cpp）
+    void onSettingsSectionChanged(int row);
     // 解锁层里的「进入」：密码正确则掀起解锁层（实现见 app_window_settings_advanced.cpp）
     void tryAdvUnlock();
     void switchPage(int idx) {
@@ -1909,180 +1893,18 @@ private:
     void smartColRefresh();
     // 设置页「搜索历史」子卡（实现见 app_window_history.cpp）
     QWidget* makeHistorySec();
-    // 【预留接口】注册一个实用工具；makeUtilPage() 会自动把它排进左侧列表
-    void registerUtilTool(const QString& title, std::function<QWidget*()> make) {
-        m_utilTools.push_back({ title, make });
-    }
-    // 【预留接口】实用工具页：空表时给明确空态，避免以后启用时出现"白页"被当成 bug
-    QWidget* makeUtilPage() {
-        auto* page = new QWidget; auto* h = new QHBoxLayout(page); h->setContentsMargins(0, 0, 0, 0); h->setSpacing(14);
-        if (m_utilTools.empty()) {
-            auto* empty = new QLabel(T("暂无实用工具。\n低频辅助功能会集中在这里，不占用主界面。"));
-            empty->setObjectName("statLabel"); empty->setAlignment(Qt::AlignCenter); empty->setWordWrap(true);
-            h->addWidget(empty, 1);
-            return page;
-        }
-        auto* nav = new QListWidget; nav->setFixedWidth(168);
-        for (const auto& t : m_utilTools) nav->addItem(t.title);
-        h->addWidget(nav);
-        enableRowHoverAnim(nav, makeProto(m_dark, m_accent), &m_rowDelegates);
-        auto* stack = new QStackedWidget;
-        for (const auto& t : m_utilTools) stack->addWidget(cardFrame(t.title, t.make()));
-        h->addWidget(stack, 1);
-        connect(nav, &QListWidget::currentRowChanged, stack, &QStackedWidget::setCurrentIndex);
-        nav->setCurrentRow(0);
-        return page;
-    }
-    QWidget* makeSettingsPage() {
-        auto* page = new QWidget; auto* h = new QHBoxLayout(page); h->setContentsMargins(0, 0, 0, 0); h->setSpacing(14);
-        m_navList = new QListWidget; m_navList->setFixedWidth(168);
-        for (const auto& s : m_secs) m_navList->addItem(s.title);
-        h->addWidget(m_navList);
-        enableRowHoverAnim(m_navList, makeProto(m_dark, m_accent), &m_rowDelegates);
-        m_secStack = new QStackedWidget;
-        for (const auto& s : m_secs) m_secStack->addWidget(cardFrame(s.title, s.make()));
-        h->addWidget(m_secStack, 1);
-        connect(m_navList, &QListWidget::currentRowChanged, this, [this](int row) {
-            if (m_secStack) {
-                // 设置分区切换：淡入 + 轻微上移（只对真正换了分区时做）
-                const bool changed = (m_secStack->currentIndex() != row);
-                m_secStack->setCurrentIndex(row);
-                if (changed) enterAnim(m_secStack->currentWidget(), kSecAnimMs, kEnterSlidePx, animChildOf(m_secStack->currentWidget()));
-            }
-            onSettingsSectionChanged(row);
-        });
-        for (int i = 0; i < (int)m_secs.size(); i++) if (m_secs[i].title == T("高级设置")) m_advSecIndex = i;
-        m_navList->setCurrentRow(0);
-        return page;
-    }
-    // 通用设置：目前只有「关闭选项设置」（关闭行为 + 是否询问），后续通用项也放这里
-    // 通用设置：外观（原「界面设置」并入）+ 关闭选项设置。设置项变多后按"通用"归并，减少左侧标签数量
-    QWidget* makeGeneralSec() {
-        auto* w = new QWidget; auto* v = new QVBoxLayout(w); v->setContentsMargins(0, 0, 0, 0); v->setSpacing(16);
-        // —— 外观 ——
-        v->addWidget(new QLabel(T("主题")));
-        auto* trow = new QHBoxLayout; trow->setSpacing(10);
-        m_lightBtn = new QPushButton(T("浅色")); m_lightBtn->setObjectName("themeToggle"); m_lightBtn->setCheckable(true);
-        m_darkBtn = new QPushButton(T("深色")); m_darkBtn->setObjectName("themeToggle"); m_darkBtn->setCheckable(true);
-        QButtonGroup* tbg = new QButtonGroup(this); tbg->addButton(m_lightBtn); tbg->addButton(m_darkBtn);
-        connect(m_lightBtn, &QPushButton::clicked, this, [this] { if (m_dark) flipTheme(); });
-        connect(m_darkBtn, &QPushButton::clicked, this, [this] { if (!m_dark) flipTheme(); });
-        trow->addWidget(m_lightBtn); trow->addWidget(m_darkBtn); trow->addStretch();
-        v->addLayout(trow);
-        v->addWidget(new QLabel(T("强调色")));
-        auto* arow = new QHBoxLayout; arow->setSpacing(10);
-        for (const auto& a : m_accents) {
-            auto* b = new QPushButton; b->setFixedSize(28, 28); b->setCursor(Qt::PointingHandCursor);
-            b->setToolTip(a.name());
-            b->setProperty("noHoverTint", true);   // 自带样式表（选中描边），不参与 QSS 状态过渡
-            QColor cc = a; connect(b, &QPushButton::clicked, this, [this, cc] { setAccent(cc); });
-            m_accentBtns.push_back(b);
-            arow->addWidget(b);
-        }
-        refreshAccentButtons();   // 统一 28px 圆点 + 当前项描边（否则看不出选的是哪个）
-        auto* custom = new QPushButton(T("自定义…")); custom->setObjectName("themeBtn");
-        connect(custom, &QPushButton::clicked, this, &AppWindow::pickCustomAccent);
-        arow->addWidget(custom); arow->addStretch();
-        v->addLayout(arow);
-
-        auto* sep = new QFrame; sep->setFrameShape(QFrame::HLine); sep->setObjectName("card"); v->addWidget(sep);
-
-        // —— 关闭选项设置 ——
-        v->addWidget(new QLabel(T("关闭选项设置")));
-        m_closeAskBtn = new QRadioButton(T("每次询问（关闭时选择关闭方式）"));
-        m_closeDirectBtn = new QRadioButton(T("直接关闭程序"));
-        m_closeTrayBtn = new QRadioButton(T("最小化到托盘"));
-        // 先设初值再连信号，避免构造期触发保存
-        refreshCloseRadios();
-        QButtonGroup* bg = new QButtonGroup(this);
-        bg->addButton(m_closeAskBtn); bg->addButton(m_closeDirectBtn); bg->addButton(m_closeTrayBtn);
-        v->addWidget(m_closeAskBtn);
-        v->addWidget(m_closeDirectBtn);
-        v->addWidget(m_closeTrayBtn);
-        connect(m_closeAskBtn, &QRadioButton::toggled, this, [this](bool on) { if (on) { m_closeAction = 0; saveSettings(); } });
-        connect(m_closeDirectBtn, &QRadioButton::toggled, this, [this](bool on) { if (on) { m_closeAction = 1; saveSettings(); } });
-        connect(m_closeTrayBtn, &QRadioButton::toggled, this, [this](bool on) { if (on) { m_closeAction = 2; saveSettings(); } });
-        // 说明书提示开关（对应 MAA 公告的「不显示公告」；内容更新后仍会恢复提示）
-        m_manualChk = new QCheckBox(T("启动时不再提示说明书（说明书更新后恢复提示）"));
-        m_manualChk->setChecked(m_manualNeverShow);
-        v->addWidget(m_manualChk);
-        connect(m_manualChk, &QCheckBox::toggled, this, [this](bool on) { m_manualNeverShow = on; saveSettings(); });
-        v->addStretch();
-        return w;
-    }
-    // 搜索设置（原「模糊搜索」分区）：模糊搜索 + 筛选模式，自上而下排布
-    QWidget* makeSearchSec() {
-        auto* w = new QWidget; auto* v = new QVBoxLayout(w); v->setContentsMargins(0, 0, 0, 0); v->setSpacing(14);
-        v->addWidget(new QLabel(T("模糊搜索")));
-        auto* desc = new QLabel(T("勾选后：精确搜索无结果时会补充模糊匹配（rapidfuzz），并与精确结果合并展示。\n关闭后：只保留精确匹配结果。"));
-        desc->setObjectName("statLabel"); desc->setWordWrap(true);
-        v->addWidget(desc);
-        m_fuzzyBox = new QCheckBox(T("启用模糊搜索（默认开）"));
-        m_fuzzyBox->setChecked(m_fuzzyEnabled);
-        connect(m_fuzzyBox, &QCheckBox::toggled, this, [this](bool on) { m_fuzzyEnabled = on; saveSettings(); doSearch(); });
-        v->addWidget(m_fuzzyBox);
-
-        auto* sep = new QFrame; sep->setFrameShape(QFrame::HLine); sep->setObjectName("card"); v->addWidget(sep);
-
-        v->addWidget(new QLabel(T("筛选模式")));
-        // 说明放在各自模式的下方（缩进），而不是先给一段总简介再摆两个选项 —— 用户要对着选项看
-        auto addModeDesc = [&](const QString& text) {
-            auto* d = new QLabel(text);
-            d->setObjectName("statLabel"); d->setWordWrap(true);
-            d->setContentsMargins(24, 0, 0, 0);   // 缩进到所属单选之下
-            v->addWidget(d);
-        };
-        m_modeStdBtn = new QRadioButton(T("标准模式（每次基于一级搜索结果重新筛）"));
-        m_modeChainBtn = new QRadioButton(T("逐级模式（在上一次筛选结果里继续筛）"));
-        // 先设初值再连信号，避免构造期触发保存/toast
-        (m_chainMode ? m_modeChainBtn : m_modeStdBtn)->setChecked(true);
-        QButtonGroup* mbg = new QButtonGroup(this); mbg->addButton(m_modeStdBtn); mbg->addButton(m_modeChainBtn);
-        v->addWidget(m_modeStdBtn);
-        addModeDesc(T("每次筛选都基于一级搜索结果重新筛，改条件就是换条件。\n"
-                      "例：搜「工日」得 54 条 → 输入「辅助」得 26 条；把「辅助」改成「检修」→ 仍在 54 条里筛"));
-        v->addWidget(m_modeChainBtn);
-        addModeDesc(T("在上一次筛选结果里继续筛，可逐级下钻。\n"
-                      "例：搜「工日」得 54 条 → 输入「辅助」得 26 条；再输入「张三」→ 在 26 条里筛出 5 条"));
-        connect(m_modeStdBtn, &QRadioButton::toggled, this, [this](bool on) {
-            if (!on) return;
-            m_chainMode = false; saveSettings();
-            showToast(T("已切换为「标准模式」：每次筛选都基于一级搜索结果"));
-        });
-        connect(m_modeChainBtn, &QRadioButton::toggled, this, [this](bool on) {
-            if (!on) return;
-            m_chainMode = true; saveSettings();
-            showToast(T("已切换为「逐级模式」：在上一次筛选结果里继续筛"));
-        });
-        v->addStretch();
-        return w;
-    }
+    // 设置页外壳 / 关于页 / 预留实用工具页（实现见 app_window_settings.cpp）
+    void registerUtilTool(const QString& title, std::function<QWidget*()> make);
+    QWidget* makeUtilPage();
+    QWidget* makeSettingsPage();
+    // 通用设置页（外观 + 关闭选项）与其搜索设置子卡（实现见 app_window_settings_general.cpp）
+    QWidget* makeGeneralSec();
+    QWidget* makeSearchSec();
     // 设置页「加密设置」与「共享设置」子卡（实现见 app_window_settings_share.cpp）
     QWidget* makeEncSec();
     QWidget* makeShareSec();
-    QWidget* makeAboutSec() {
-        auto* w = new QWidget; auto* v = new QVBoxLayout(w); v->setContentsMargins(0, 0, 0, 0); v->setSpacing(8);
-        v->addWidget(new QLabel(T("Excel 表格关键字搜索工具")));
-        auto* ver = new QLabel(T("版本 v0.3.2 · Qt6")); ver->setObjectName("statLabel");
-        v->addWidget(ver);
-        v->addWidget(new QLabel(T("作者 / 发行者：觉心恋影")));
-        v->addWidget(new QLabel(projectLicense().isEmpty() ? T("开源许可：（待定）") : (T("开源许可：") + projectLicense())));
-        v->addWidget(new QLabel(T("本程序以动态链接方式使用 Qt（LGPL-3.0）；第三方组件许可见 licenses 目录。")));
-        v->addWidget(new QLabel(T("界面视觉风格参考自 MAA / MaaWpfGui 与 MaaEnd。")));
-        auto* row = new QHBoxLayout;
-        auto* manBtn = new QPushButton(T("使用说明书")); manBtn->setObjectName("primaryBtn");
-        manBtn->setCursor(Qt::PointingHandCursor);
-        connect(manBtn, &QPushButton::clicked, this, [this] { openManual(); });
-        row->addWidget(manBtn);
-        auto* btn = new QPushButton(T("查看开源声明")); btn->setObjectName("themeBtn");
-        connect(btn, &QPushButton::clicked, this, [] {
-            const QString dir = QCoreApplication::applicationDirPath() + "/licenses";
-            QDesktopServices::openUrl(QUrl::fromLocalFile(QDir(dir).exists() ? dir : QCoreApplication::applicationDirPath()));
-        });
-        row->addWidget(btn); row->addStretch();
-        v->addLayout(row);
-        v->addStretch();
-        return w;
-    }
+    // 关于页（实现见 app_window_settings.cpp）
+    QWidget* makeAboutSec();
     void buildUi() {
         auto* root = new QVBoxLayout(this); root->setContentsMargins(0, 0, 0, 0); root->setSpacing(0);
         auto* panel = new QWidget; panel->setObjectName("panel");
