@@ -583,87 +583,30 @@ public:
     }
     int advSectionCount() const { return (int)m_advSecs.size(); }
     // 自检钩子：--page closedlg 时渲染关闭方式对话框（它平时是模态的，没法直接截）
-    // 自检钩子：--migrate 强制执行一次「注册表 → config.ini」搬迁，摘要写 --out（供验证/客服排障）
-    QString demoMigrate() {
-        QString detail;
-        migrateFromRegistry(true, &detail);
-        return detail;
-    }
+    // 自检钩子：--migrate 强制搬迁（实现见 app_window_hooks.cpp）
+    QString demoMigrate();
     // ---- 使用说明书（版式与交互对齐 MAA「公告」框）----
     // 实现见 app_window_manual.cpp（B2 起不再在类内内联定义）
     void openManual();
     void maybeShowManual();
     QPixmap demoManualPixmap();
     QString manualNavReport();
-    QPixmap demoCloseDialogPixmap() {
-        CloseDialog d(m_dark, m_accent, this);
-        d.show();
-        QCoreApplication::processEvents();
-        QPixmap pm = d.grab();
-        d.close();
-        return pm;
-    }
+    // 自检钩子：--page closedlg（实现见 app_window_hooks.cpp）
+    QPixmap demoCloseDialogPixmap();
     void demoTab(int i) { switchPage(i); }   // 自检钩子：--tab N 切到第 N 个顶级标签
     // 自检钩子：--reload 用。走的就是「重新加载」按钮那条路径（loadData，非强制），
     // 用来离屏复现"已有数据 → 重新加载"时的加载反馈与统计数字复位。
     void forceReloadForDemo() { loadData(); }
     // —— 以下两个是**截图/自检专用**入口（只影响本次渲染，不写配置、不改业务行为）——
-    // --collapse 0,1：折叠搜索页第 0/1 张卡片（0=数据概览 1=搜索结果）。走的就是点击标题栏那条路径。
-    void demoCollapse(const QString& spec) {
-        for (const QString& s : spec.split(',', Qt::SkipEmptyParts)) {
-            bool ok = false;
-            const int i = s.trimmed().toInt(&ok);
-            if (ok && i >= 0 && i < (int)m_collapseCards.size()) m_collapseCards[i]->setCollapsed(true, true);
-        }
-    }
-    // --hover <名>：把某个控件强制摆到 hover 终态，用于离屏验证"过渡两端色与 QSS 一致"。
-    //   primaryBtn/themeBtn/tbBtn/navBtn = QSS 按钮；sec = 设置列表项；row = 结果表行；
-    //   folder/close = 自绘按钮；card = 卡片标题栏。真实鼠标下这些状态由 Enter/Leave 驱动。
-    void demoHover(const QString& what) {
-        // sec[行号] = 设置列表项（默认第 1 项，避开选中项）；row[行号] = 结果表行（默认第 0 行）
-        if (what == "loadbar") { if (m_loadBar) m_loadBar->start(); return; }   // B4：进度条呈现帧（截图用）
-        // B5：密码错误的失败反馈呈现帧（走真实解锁路径，只喂一个错密码；不改配置、不落盘）
-        if (what == "shakewrong") { if (m_advPwdEdit) { m_advPwdEdit->setText(T("__wrong__")); tryAdvUnlock(); } return; }
-        if (what.startsWith("sec")) { forceRowHover(m_navList, what.size() > 3 ? what.mid(3).toInt() : 1); return; }
-        if (what.startsWith("row")) { forceRowHover(m_table, what.size() > 3 ? what.mid(3).toInt() : 0); return; }
-        QWidget* w = nullptr;
-        // 名字末尾带数字 = 取第 N 个**可见**的同名按钮（默认第 1 个），例：navBtn2 = 第二个顶部标签
-        QString kind = what; int nth = 1;
-        while (!kind.isEmpty() && kind.at(kind.size() - 1).isDigit()) kind.chop(1);
-        if (kind != what) nth = what.mid(kind.size()).toInt();
-        if (kind == "primaryBtn" || kind == "themeBtn" || kind == "tbBtn" || kind == "navBtn") {
-            // 关键：必须挑**可见**的那一个 —— 同名按钮在隐藏页里也有一堆（设置页各分区），
-            // 挑到隐藏的等于没挑（合成 Enter 会被送到不可见控件上，截图毫无变化）。
-            int seen = 0;
-            for (auto* b : findChildren<QPushButton*>()) {
-                if (b->objectName() != kind || !b->isVisible()) continue;
-                if (++seen == nth) { w = b; break; }
-            }
-        } else if (what == "folder") w = m_folderBtn;
-        else if (what == "close")    w = m_closeBtn;
-        else if (what == "card")     { if (!m_collapseCards.empty()) w = m_collapseCards[0]->header(); }
-        if (!w) return;
-        // QSS 的 :hover 只看 WA_UnderMouse（真实鼠标时由 Qt 维护），离屏下要手动置位；
-        // QSS 控件的状态过渡（StateTint）挂在事件过滤器上，靠这个合成 Enter 启动。
-        // 注意：关闭动效时 StateTint 根本没安装，QSS 控件的 hover 就交回给 QSS 自己 ——
-        // 离屏下没有真实鼠标，截不到该态（这是"关闭动效后与动效前一致"的必然结果）。
-        w->setAttribute(Qt::WA_UnderMouse, true);
-        QEnterEvent enter(QPointF(1, 1), QPointF(1, 1), QPointF(1, 1));
-        QApplication::sendEvent(w, &enter);
-        w->update();
-    }
-    void forceRowHover(QAbstractItemView* v, int row) {
-        if (!v) return;
-        if (auto* d = qobject_cast<RowDelegate*>(v->itemDelegate())) d->setHoverRow(row);
-    }
+    // 截图钩子：--collapse 0,1（实现见 app_window_hooks.cpp）
+    void demoCollapse(const QString& spec);
+    // 截图钩子：--hover <名>（实现见 app_window_hooks.cpp）
+    void demoHover(const QString& what);
+    void forceRowHover(QAbstractItemView* v, int row);
 
     void goAdvSection(int i) { if (m_advNavList) m_advNavList->setCurrentRow(i); }
-    // 自检钩子：--advpwd <口令>：把口令填进解锁框并尝试解锁（用来验证"迁移成哈希后仍能正常解锁"）
-    void demoAdvUnlock(const char* pw) {
-        if (!m_advPwdEdit) return;
-        m_advPwdEdit->setText(QString::fromUtf8(pw));
-        tryAdvUnlock();
-    }
+    // 自检钩子：--advpwd <口令>（实现见 app_window_hooks.cpp）
+    void demoAdvUnlock(const char* pw);
     // 高级设置的门禁栈（解锁层 ↔ 真实内容）切换（实现见 app_window_settings_advanced.cpp）
     void advGateAnim();
     // 设置页分区切换：进入「高级设置」若未解锁则显示解锁层；离开则重新上锁（实现见 app_window_settings.cpp）
@@ -701,27 +644,11 @@ public:
         if (m_filterEdit) { m_filterEdit->setText(QString::fromUtf8(kw)); doFilter(); }
         return (qulonglong)m_results.size();
     }
-    // 首条命中行的身份键 "fn|sheet|row"，供无头自检链式引用（--search 输出 → --block 使用）
-    QString firstHitKey() const {
-        if (m_results.empty()) return QString();
-        const auto& r = m_results[0];
-        return QString::fromUtf8((r.filename + "|" + r.sheetName + "|" + std::to_string(r.row)).c_str());
-    }
+    // 首条命中行的身份键 fn|sheet|row（实现见 app_window_hooks.cpp）
+    QString firstHitKey() const;
     int demoBlocked() const { return m_lastBlocked; }
-    // 无头自检钩子：--block fn|sheet|row（或 --block fn 屏蔽整个文件）、--mark fn|sheet|row|color、--clearmarks
-    void applyMarkCli(const QString& blockSpec, const QString& markSpec, bool clearAll) {
-        if (clearAll) m_marks.clearAll();
-        if (!blockSpec.isEmpty()) {
-            auto p = blockSpec.split('|');
-            if (p.size() == 3) m_marks.blockedEntries.insert({ p[0].toUtf8().toStdString(), p[1].toUtf8().toStdString(), p[2].toInt() });
-            else if (p.size() == 1) m_marks.blockedFiles.insert(p[0].toUtf8().toStdString());
-        }
-        if (!markSpec.isEmpty()) {
-            auto p = markSpec.split('|');
-            if (p.size() == 4) m_marks.marked[{ p[0].toUtf8().toStdString(), p[1].toUtf8().toStdString(), p[2].toInt() }] = p[3].toInt();
-        }
-        saveSettings();
-    }
+    // 无头钩子：--block / --mark / --clearmarks（实现见 app_window_hooks.cpp）
+    void applyMarkCli(const QString& blockSpec, const QString& markSpec, bool clearAll);
     int blockedEntryCount() const { return (int)m_marks.blockedEntries.size(); }
     int blockedFileCount() const { return (int)m_marks.blockedFiles.size(); }
     int markedCount() const { return (int)m_marks.marked.size(); }
@@ -738,20 +665,8 @@ public:
     const char* closeActionName() const { return m_closeAction == 1 ? "close" : (m_closeAction == 2 ? "tray" : "ask"); }
     // 动效开关状态（--report 新增字段 anim=on|off，用来证明开关真的生效；既有字段含义不变）
     const char* animName() const { return g_noAnim ? "off" : "on"; }
-    // 离屏截图 / 自检用：等子控件动效落定，避免拍到动画中间态。
-    // ms > 0 时只等指定毫秒 —— 用于**故意抓动画中间帧**（证明动效确实在动，不是瞬变）。
-    // 默认 kSettleMs 必须覆盖**最长的一条动效链**（数值滚动 420ms + 最大错峰 80ms + 页面/分区 160ms
-    // + 余量）。以后加了更长的动效要同步调大 kSettleMs —— 否则截图会拍到中间态
-    // （返工记录：默认值还停在旧的 420ms 时，把索引记录 43846 拍成了 43844）。
-    // 关闭动效时是空操作（本来就没有中间态）。
-    void settleAnim(int ms = 0) {
-        if (!g_noAnim) {
-            QEventLoop loop;
-            QTimer::singleShot(ms > 0 ? ms : kSettleMs, &loop, &QEventLoop::quit);
-            loop.exec();
-        }
-        QCoreApplication::processEvents();
-    }
+    // 截图/自检用：等动效落定（实现见 app_window_hooks.cpp；kSettleMs 的取值理由见该文件）
+    void settleAnim(int ms = 0);
     const char* sharePathC() const { return m_sharePath.c_str(); }
     void setAllowPrompt(bool v) { m_allowPrompt = v; m_histRecord = v; }   // 无头自检同时关闭历史记录
     // 打开当前数据源目录：离线 = 程序旁 data\，共享 = 共享目录（与原版「打开文件夹」同义）
@@ -840,19 +755,8 @@ public:
     qulonglong entryCount() const { return (qulonglong)m_engine.getEntryCount(); }
     bool usedCache() const { return m_usedCache; }
     void setDark(bool d) { m_dark = d; apply(); }
-    void waitForLoad(int timeoutMs = 120000) {
-        // 注意：worker 可能已经结束（例如共享目录瞬时不可达时几微秒就返回），此时 finished 的
-        // 队列槽（onLoadFinished / 缓存兜底）还没跑，必须泵一次事件循环，否则自检会读到中间态。
-        if (!m_worker || !m_worker->isRunning()) { QCoreApplication::processEvents(); return; }
-        QEventLoop loop;
-        connect(m_worker, &LoadWorker::finished, &loop, &QEventLoop::quit);
-        QTimer timeoutTimer; timeoutTimer.setSingleShot(true);
-        connect(&timeoutTimer, &QTimer::timeout, &loop, &QEventLoop::quit);
-        timeoutTimer.start(timeoutMs);
-        loop.exec();
-        if (m_worker && m_worker->isRunning()) m_loadTimedOut = true;   // 超时：调用方据此报错
-        QCoreApplication::processEvents();
-    }
+    // 等后台加载结束（带超时上界；实现见 app_window_hooks.cpp）
+    void waitForLoad(int timeoutMs = 120000);
     // 给界面上的 QSS 控件统一挂状态过渡：按钮（hover/按下/圆角）+ 输入框（焦点边框）。
     // 放在 buildUi() 之后扫描一遍 —— 以后新增按钮只要沿用同名 objectName 就自动获得过渡，
     // 不需要在每个工厂里重复写一行（注册表驱动的老规矩）。
