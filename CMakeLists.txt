@@ -31,6 +31,7 @@ add_executable(excel_search
     app_window_settings.cpp             # B7：设置页外壳/关于/预留工具页（从 app_window.h 搬出）
     app_window_settings_general.cpp     # B7：通用设置页与搜索设置子卡（从 app_window.h 搬出）
     app_window_config.cpp                # B8：配置持久化与数据加载流水线（从 app_window.h 搬出）
+    config_crypto.cpp                    # 加固：config.ini 敏感值加密 + 管理密码哈希（DPAPI + AES-GCM）
 loading.cpp
 data_model.cpp
 manual_window.cpp
@@ -77,7 +78,7 @@ target_compile_definitions(excel_search PRIVATE
     "ES_DEFAULT_ADMIN_PASSWORD=\"${ES_DEFAULT_ADMIN_PASSWORD}\"")
 set_target_properties(excel_search PROPERTIES WIN32_EXECUTABLE TRUE)
 
-target_link_libraries(excel_search PRIVATE Qt6::Widgets Qt6::Network bcrypt)
+target_link_libraries(excel_search PRIVATE Qt6::Widgets Qt6::Network bcrypt crypt32)
 
 target_include_directories(excel_search PRIVATE
     ${CMAKE_CURRENT_SOURCE_DIR}

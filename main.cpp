@@ -94,6 +94,7 @@
 #include "data_model.h"
 #include "loading.h"
 #include "app_window.h"
+#include "config_crypto.h"   // 加固：config.ini 敏感值加密 / 管理密码哈希（--cfgselftest 用）
 
 
 
@@ -103,6 +104,76 @@ static void writeHookOut(const QString& path, const QString& text) {
     if (path.isEmpty()) return;
     std::ofstream o(path.toLocal8Bit().constData());
     if (o) o << text.toUtf8().constData();
+}
+
+// 自检钩子：--cfgselftest —— 验证 config.ini 加固用的加密与口令哈希（**纯内存，不读写 config.ini**）。
+// 覆盖：密钥装载、加解密往返（含中文/换行/空串）、明文兼容、**错误密钥必须解不开**、
+//       **篡改密文必须被 GCM 认证拒绝**、管理密码哈希（正确/错误/旧版明文迁移识别）。
+// 注意：结果写文件（GUI 子系统无控制台），用法 `--cfgselftest --out r.txt`。
+static QString cfgRunSelfTest() {
+    QString out;
+    int pass = 0, fail = 0;
+    auto check = [&](const char* name, bool ok) {
+        out += QStringLiteral("  %1 %2\n").arg(ok ? "PASS" : "FAIL", QString::fromUtf8(name));
+        if (ok) ++pass; else ++fail;
+    };
+
+    // 1) 密钥装载（首次生成 + 回填 keyblob）
+    bool created = false;
+    std::string blob1, blobJunk;
+    const bool created1 = cfgcrypto::LoadOrCreateKey(std::string(), &created, &blob1);
+    check("key-create", created1 && created && blob1.size() > 40);
+    check("key-ready", cfgcrypto::KeyReady());
+
+    // 2) 往返（中文 + 换行 + 空串）
+    const std::string plain = "p@ss-中文密码-\n第二行";
+    const std::string enc = cfgcrypto::Protect(plain);
+    check("protect-nonempty", !enc.empty() && cfgcrypto::IsProtected(enc));
+    std::string back; bool wasProtected = false;
+    const bool okRound = cfgcrypto::Unprotect(enc, &back, &wasProtected);
+    check("roundtrip-equal", okRound && wasProtected && back == plain);
+    const std::string encEmpty = cfgcrypto::Protect(std::string());
+    std::string backEmpty; bool wpEmpty = false;
+    check("roundtrip-empty", cfgcrypto::Unprotect(encEmpty, &backEmpty, &wpEmpty) && backEmpty.empty() && wpEmpty);
+
+    // 3) 旧版明文兼容（原样返回，且不标记为密文）
+    std::string legacyOut; bool legacyProtected = true;
+    const bool okLegacy = cfgcrypto::Unprotect("plain-legacy-value", &legacyOut, &legacyProtected);
+    check("legacy-passthrough", okLegacy && !legacyProtected && legacyOut == "plain-legacy-value");
+
+    // 4) 错误密钥必须解不开（换一把新密钥后再试）
+    bool created2 = false;
+    cfgcrypto::ResetKeyForTest();
+    const bool okNewKey = cfgcrypto::LoadOrCreateKey(std::string(), &created2, &blobJunk) && created2;
+    std::string wrongOut; bool wpWrong = false;
+    const bool okWrong = cfgcrypto::Unprotect(enc, &wrongOut, &wpWrong);
+    check("wrong-key-fails", okNewKey && !okWrong && wpWrong);
+    // 恢复原密钥（后续测试与真实使用都基于它）
+    bool created3 = true;
+    const bool restored = cfgcrypto::LoadOrCreateKey(blob1, &created3, &blobJunk);
+    check("key-restore", restored && !created3);
+
+    // 5) 篡改密文必须被拒绝（改一个 hex 位）
+    std::string tampered = enc;
+    const size_t pos = tampered.size() - 3;   // 落在密文尾部
+    tampered[pos] = (tampered[pos] == 'a') ? 'b' : 'a';
+    std::string tamperOut; bool wpTamper = false;
+    const bool okTamper = cfgcrypto::Unprotect(tampered, &tamperOut, &wpTamper);
+    check("tamper-rejected", !okTamper && wpTamper);
+
+    // 6) 管理密码哈希
+    const std::string h = cfgcrypto::HashPassword("abc123");
+    bool isLegacy = true;
+    check("pwd-hash-format", h.rfind("pbkdf2$200000$", 0) == 0);
+    check("pwd-verify-ok", cfgcrypto::VerifyPassword("abc123", h, &isLegacy) && !isLegacy);
+    check("pwd-verify-bad", !cfgcrypto::VerifyPassword("abc124", h, &isLegacy));
+    check("pwd-verify-empty", !cfgcrypto::VerifyPassword(std::string(), h, &isLegacy));
+    bool legacyFlag = false;
+    check("pwd-legacy-plain", cfgcrypto::VerifyPassword("old", "old", &legacyFlag) && legacyFlag);
+
+    out.prepend(QStringLiteral("cfgselftest=%1\npass=%2 fail=%3\n")
+                    .arg(fail == 0 ? "ok" : "fail").arg(pass).arg(fail));
+    return out;
 }
 
 int main(int argc, char** argv) {
@@ -126,6 +197,7 @@ int main(int argc, char** argv) {
     QString shareSpec; bool shareSet = false, shareOff = false;
     QString hookOut;   // --out <file>：自检钩子结果写文件（GUI 子系统无控制台）
     bool migrateNow = false;   // --migrate：强制跑一次旧版设置搬迁
+    bool cfgSelfTest = false;  // --cfgselftest：配置加密/口令哈希自测（纯内存）
     // 动效总开关：**必须在构造 AppWindow 之前生效**（否则可能已经起过动画）。
     // 环境变量 EXCELSEARCH_NO_ANIM=1（推荐，离屏截图/自检用）或 CLI --no-anim，二选一。
     // 注：沿用原型期的旧名 UI_PROTO_NO_ANIM 作为兼容别名（现有脚本/文档仍可用）。
@@ -163,6 +235,12 @@ int main(int argc, char** argv) {
         if (std::strcmp(argv[i], "--mid") == 0 && i + 1 < argc) midMs = QString::fromLocal8Bit(argv[i + 1]);
         if (std::strcmp(argv[i], "--reload") == 0) reloadBeforeShot = true;
         if (std::strcmp(argv[i], "--no-anim") == 0) g_noAnim = true;   // 等价 UI_PROTO_NO_ANIM=1
+        if (std::strcmp(argv[i], "--cfgselftest") == 0) cfgSelfTest = true;
+    }
+    // 自检钩子：配置加固自测（纯内存，不碰 config.ini，也不受单实例闸门影响）
+    if (cfgSelfTest) {
+        writeHookOut(hookOut, cfgRunSelfTest());
+        return 0;
     }
     // ================= 单实例闸门 =================
     // 为什么必须有：多实例会同时读写同一份 config.ini 与同一对 cache.dat/cache.inv。
