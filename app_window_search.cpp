@@ -6,6 +6,11 @@
 // 说明：showToast（窗口级提示）与 cardFrame（通用卡片工厂，设置页也用）留给 B11 窗口外壳；
 //       setHitStat / showHitTip 是单行内联，按约定留在类内。
 #include "app_window.h"
+#include "dialogs.h"
+#include "loading.h"
+#include <QLineEdit>
+#include <QMenu>
+#include <QScrollArea>
 #include <QHeaderView>
 #include <QMessageBox>
 

@@ -1,6 +1,11 @@
 // 搜索历史相关的 AppWindow 方法（B3 从 app_window.h 的类内内联定义搬出，逻辑一字未改）。
 // 语义：只有一级搜索记录历史；时效 0 = 关闭程序后删除（不落盘）；下拉与设置页共用这一份数据。
 #include "app_window.h"
+#include "dialogs.h"
+#include <QComboBox>
+#include <QDateTime>
+#include <QLineEdit>
+#include <QMenu>
 
 // ---- 搜索历史 ----
 // 按当前时效清理过期条目（时效 = 0「关闭程序后删除」时不做时间清理）

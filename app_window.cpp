@@ -7,6 +7,19 @@
 // ⚠️ 本文件里 startSystemMove / startSystemResize / toggleMax 是无边框窗口的命脉（见各函数注释），
 //    改窗口行为前先读 apply()/buildUi() 与 docs/回迁标注.md 里关于无边框窗口的条目。
 #include "app_window.h"
+#include <QComboBox>
+#include "dialogs.h"
+#include "widgets.h"
+#include <QButtonGroup>
+#include <QColorDialog>
+#include <QDialog>
+#include <QDir>
+#include <QLineEdit>
+#include <QMenu>
+#include <QRadioButton>
+#include <QStackedWidget>
+#include <QSystemTrayIcon>
+#include <QWindow>
 #include <QDesktopServices>
 #include <QStandardPaths>
 
@@ -345,3 +358,15 @@ void AppWindow::buildUi() {
     pv->addWidget(m_stack, 1);
     root->addWidget(panel);
 }
+
+// —— B12-step2：从类内搬出的单行成员函数（逻辑一字未改）——
+    void AppWindow::goSettingsPage() { switchPage(1); }
+    void AppWindow::goSection(int i) { if (m_navList) m_navList->setCurrentRow(i); }
+    void AppWindow::forceReloadForDemo() { loadData(); }
+    void AppWindow::goAdvSection(int i) { if (m_advNavList) m_advNavList->setCurrentRow(i); }
+    bool AppWindow::appIconIsResource() { return !QIcon(":/app.ico").isNull(); }
+    void AppWindow::setDark(bool d) { m_dark = d; apply(); }
+    void AppWindow::flipTheme() { m_dark = !m_dark; saveSettings(); apply(); }
+    void AppWindow::setAccent(const QColor& c) { m_accent = c; saveSettings(); apply(); }
+    void AppWindow::pickCustomAccent() { QColor c = QColorDialog::getColor(m_accent, this, T("选择强调色")); if (c.isValid()) setAccent(c); }
+    QString AppWindow::u8(const std::string& s) { return QString::fromUtf8(s.c_str()); }

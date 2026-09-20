@@ -6,43 +6,27 @@
 
 // —— 只保留「类声明本身需要」的头；其余（重头模板库、只在实现里用到的 Qt 头）已下沉到各 .cpp ——
 // B12 的目的：不再让每个 .cpp 都被 rapidfuzz / 各 reader / dialogs / widgets / manual_window 拖住。
-#include <QWidget>            // 基类
+// —— B12-step2 之后：头文件里已无内联函数体，只留「类声明本身需要」的头 ——
+// 其余全部下沉到各 .cpp（谁用谁 include）；本文件只对指针/引用类型做前向声明。
+#include <QWidget>
 #include <QString>
-#include <QStringList>        // allHeaderNames() 按值返回
-#include <QColor>             // m_accent 等按值成员
-#include <QIcon>              // appIconIsResource() 内联体
-#include <QColorDialog>       // pickCustomAccent() 内联体
-#include <QToolTip>           // showHitTip() 内联体
-#include <QCursor>            // showHitTip() 内联体（QCursor::pos）
-#include <QSystemTrayIcon>    // trayActive() 内联体（isVisible）
+#include <QStringList>
+#include <QColor>
 #include <functional>
 #include <string>
 #include <vector>
 #include <map>
 #include <utility>
-#include "common.h"           // T()
-#include "search_engine.h"    // SearchEngine / SearchResult 按值成员
-#include "data_model.h"       // MarkStore / HistItem / CardDef / PageDef / SecDef / RowKey 按值成员
-#include "loading.h"          // 头文件内联体用到 LoadWorker/ProbeWorker 与 readInventory 等（.cpp 各自按需再 include）
-#include "manual_window.h"    // demoManualPixmap/manualNavReport 的返回类型与 manualText/manualHash（内联体用到）
-#include "dialogs.h"          // CloseDialog/PasswordDialog：内联体里有按值构造（demoCloseDialogPixmap 等在 .cpp）
-#include <QLineEdit>          // demoSearch() 内联体
-#include <QCheckBox>          // 通用设置内联体
-#include <QComboBox>          // 智能列/历史设置内联体
-#include <QRadioButton>       // 共享/筛选模式内联体
-#include <QStackedWidget>     // 页面栈内联体
-#include <QMenu>              // 托盘菜单内联体
-#include <QButtonGroup>       // 单选组内联体
-#include <QDateTime>          // 内联体里的时间处理
-#include <QFile>
-#include <QDir>
+#include "search_engine.h"
+#include "data_model.h"
 
 // 以下类型只以「指针 / 引用」出现在类声明里 → 前向声明即可，不必拉进它们的完整头文件（这就是提速的关键）
 class QLabel; class QLineEdit; class QPushButton; class QCheckBox; class QFrame;
 class QScrollArea; class QSpinBox; class QButtonGroup; class QRadioButton; class QComboBox;
 class QListWidget; class QTableWidget; class QStackedWidget; class QPlainTextEdit;
 class QMenu; class QTimer; class QVariantAnimation; class QGraphicsOpacityEffect;
-class QAbstractItemView; class QAction; class QScrollBar; class QPixmap;
+class QAbstractItemView; class QAction; class QScrollBar; class QPixmap; class QIcon;
+class QSystemTrayIcon;
 class QCloseEvent; class QMouseEvent; class QResizeEvent;
 class QListWidgetItem; class QTableWidgetItem;
 class ManualDialog; class WinBtn; class FolderBtn; class CardHeader; class LoadBar;
@@ -448,12 +432,12 @@ class AppWindow : public QWidget {
 public:
     // 构造：成员初始化 + 分区表 + 托盘/定时器挂钩（实现见 app_window.cpp）
     AppWindow();
-    void goSettingsPage() { switchPage(1); }
-    void goSection(int i) { if (m_navList) m_navList->setCurrentRow(i); }
+    void goSettingsPage();
+    void goSection(int i);
     // 高级设置：截图/自检用（unlock=true 直接解锁到真实内容；否则停在解锁层）
     // 导航（实现见 app_window.cpp）
     void goAdvPage(bool unlock = false);
-    int advSectionCount() const { return (int)m_advSecs.size(); }
+    int advSectionCount()const;
     // 自检钩子：--page closedlg 时渲染关闭方式对话框（它平时是模态的，没法直接截）
     // 自检钩子：--migrate 强制搬迁（实现见 app_window_hooks.cpp）
     QString demoMigrate();
@@ -468,7 +452,7 @@ public:
     void demoTab(int i) { switchPage(i); }   // 自检钩子：--tab N 切到第 N 个顶级标签
     // 自检钩子：--reload 用。走的就是「重新加载」按钮那条路径（loadData，非强制），
     // 用来离屏复现"已有数据 → 重新加载"时的加载反馈与统计数字复位。
-    void forceReloadForDemo() { loadData(); }
+    void forceReloadForDemo();
     // —— 以下两个是**截图/自检专用**入口（只影响本次渲染，不写配置、不改业务行为）——
     // 截图钩子：--collapse 0,1（实现见 app_window_hooks.cpp）
     void demoCollapse(const QString& spec);
@@ -476,7 +460,7 @@ public:
     void demoHover(const QString& what);
     void forceRowHover(QAbstractItemView* v, int row);
 
-    void goAdvSection(int i) { if (m_advNavList) m_advNavList->setCurrentRow(i); }
+    void goAdvSection(int i);
     // 自检钩子：--advpwd <口令>（实现见 app_window_hooks.cpp）
     void demoAdvUnlock(const char* pw);
     // 高级设置的门禁栈（解锁层 ↔ 真实内容）切换（实现见 app_window_settings_advanced.cpp）
@@ -486,44 +470,44 @@ public:
     // 解锁层里的「进入」：密码正确则掀起解锁层（实现见 app_window_settings_advanced.cpp）
     void tryAdvUnlock();
     void switchPage(int idx);
-    void demoSearch(const char* kw) { if (m_searchEdit) { m_searchEdit->setText(QString::fromUtf8(kw)); doSearch(); } }
-    qulonglong demoHits(const char* kw) { demoSearch(kw); return (qulonglong)m_results.size(); }
+    void demoSearch(const char* kw);
+    qulonglong demoHits(const char* kw);
     // 自检钩子：--colprobe 打印列名解析结果（空串 = UI 会提示「所输入的列不存在」）
-    QString demoResolveColumn(const char* text) const { return u8(resolveColumnSource(text)); }
+    QString demoResolveColumn(const char* text)const;
     // 自检查询：读取失败的文件数与清单、加载是否超时（供 --report 输出）
-    int failedFileCountC() const { return m_failedCount; }
-    QString failedListC() const { return m_failedList; }
-    bool loadTimedOutC() const { return m_loadTimedOut; }
+    int failedFileCountC()const;
+    QString failedListC()const;
+    bool loadTimedOutC()const;
     // 加固自检：config.ini 解密失败项数 / 主密钥是否可用（供 --report 输出）
-    int cfgEncFailC() const { return m_cfgEncFail; }
-    bool cfgKeyReadyC() const { return m_cfgKeyReady; }
+    int cfgEncFailC()const;
+    bool cfgKeyReadyC()const;
     // 自检钩子：--search <一级> --filter <二级> 时返回二级筛选后的条数
     // 截图钩子：--filter 二级筛选（实现见 app_window_hooks.cpp）
     qulonglong demoFilter(const char* kw);
     // 首条命中行的身份键 fn|sheet|row（实现见 app_window_hooks.cpp）
     QString firstHitKey() const;
-    int demoBlocked() const { return m_lastBlocked; }
+    int demoBlocked()const;
     // 无头钩子：--block / --mark / --clearmarks（实现见 app_window_hooks.cpp）
     void applyMarkCli(const QString& blockSpec, const QString& markSpec, bool clearAll);
-    int blockedEntryCount() const { return (int)m_marks.blockedEntries.size(); }
-    int blockedFileCount() const { return (int)m_marks.blockedFiles.size(); }
-    int markedCount() const { return (int)m_marks.marked.size(); }
-    int historyCount() const { return (int)m_history.size(); }
-    int historyShow() const { return m_histShow; }
-    int historyTtl() const { return m_histTtlMin; }
-    const char* filterMode() const { return m_chainMode ? "chain" : "standard"; }
+    int blockedEntryCount()const;
+    int blockedFileCount()const;
+    int markedCount()const;
+    int historyCount()const;
+    int historyShow()const;
+    int historyTtl()const;
+    const char* filterMode()const;
     // 自检钩子：--share <UNC 路径> / --shareoff（实现见 app_window_settings_share.cpp）
     void applyShareCli(const QString& path, bool off);
-    bool shareEnabled() const { return m_shareMode; }
+    bool shareEnabled()const;
     // 自检：托盘是否真的可用（无托盘环境应返回 false，此时 × 仍按普通关闭处理）
-    bool trayActive() const { return m_tray && m_tray->isVisible(); }
-    bool manualNeverShowC() const { return m_manualNeverShow; }
-    const char* closeActionName() const { return m_closeAction == 1 ? "close" : (m_closeAction == 2 ? "tray" : "ask"); }
+    bool trayActive()const;
+    bool manualNeverShowC()const;
+    const char* closeActionName()const;
     // 动效开关状态（--report 新增字段 anim=on|off，用来证明开关真的生效；既有字段含义不变）
-    const char* animName() const { return g_noAnim ? "off" : "on"; }
+    const char* animName()const;
     // 截图/自检用：等动效落定（实现见 app_window_hooks.cpp；kSettleMs 的取值理由见该文件）
     void settleAnim(int ms = 0);
-    const char* sharePathC() const { return m_sharePath.c_str(); }
+    const char* sharePathC()const;
     void setAllowPrompt(bool v) { m_allowPrompt = v; m_histRecord = v; }   // 无头自检同时关闭历史记录
     // 打开当前数据源目录：离线 = 程序旁 data\，共享 = 共享目录（与原版「打开文件夹」同义）
     // 打开当前数据源目录（实现见 app_window.cpp）
@@ -533,7 +517,7 @@ public:
     //   早期版本这里是按强调色程序化绘制，导致「资源管理器（读 exe 内嵌图标）」与
     //   「任务栏/托盘（读代码绘制）」显示**两个不同图标**（用户反馈）。现三处统一。
     //   程序化绘制保留为**兜底**：万一 Qt 的 ico 插件缺失导致资源加载失败，也不至于出现空白图标。
-    static bool appIconIsResource() { return !QIcon(":/app.ico").isNull(); }
+    static bool appIconIsResource();
     // 图标 / 托盘 / 关闭流程（实现见 app_window.cpp）
     QIcon makeAppIcon() const;
     void setupTray();
@@ -542,8 +526,8 @@ public:
     void refreshCloseRadios();
     void hideToTray();
     // ---- 共享模式 ----
-    std::string dataSourceDir() const { return m_shareMode ? m_sharePath : m_dataDir; }
-    void setShareStatus(const QString& s) { m_shareStatusText = s; if (m_shareStatus) m_shareStatus->setText(s); }
+    std::string dataSourceDir()const;
+    void setShareStatus(const QString& s);
     // 规范化共享路径（静态方法，实现见 app_window_settings_share.cpp）
     static QString normalizeSharePath(const QString& raw);
     // 以下共享模式方法均实现于 app_window_settings_share.cpp：
@@ -555,12 +539,12 @@ public:
     void doForceReload();
     void onSharePathEdited();
     void setShareMode(bool on);
-    int exportAllTo(const char* file) { return exportXlsxTo(m_results, file) ? 1 : 0; }
-    int loadedCount() const { return m_loadedFiles; }
-    int skippedCount() const { return m_skipped; }
-    qulonglong entryCount() const { return (qulonglong)m_engine.getEntryCount(); }
-    bool usedCache() const { return m_usedCache; }
-    void setDark(bool d) { m_dark = d; apply(); }
+    int exportAllTo(const char* file);
+    int loadedCount()const;
+    int skippedCount()const;
+    qulonglong entryCount()const;
+    bool usedCache()const;
+    void setDark(bool d);
     // 等后台加载结束（带超时上界；实现见 app_window_hooks.cpp）
     void waitForLoad(int timeoutMs = 120000);
     // 给界面上的 QSS 控件统一挂状态过渡：按钮（hover/按下/圆角）+ 输入框（焦点边框）。
@@ -583,14 +567,14 @@ protected:
     void resizeEvent(QResizeEvent* e) override;
 private:
     void toggleMax();
-    void flipTheme() { m_dark = !m_dark; saveSettings(); apply(); }
-    void setAccent(const QColor& c) { m_accent = c; saveSettings(); apply(); }
+    void flipTheme();
+    void setAccent(const QColor& c);
     // 强调色色块：统一 28px 圆点；当前生效的那个加一圈"主题文字色"描边，否则看不出选的是哪个
     // 强调色色块选中态（实现见 app_window.cpp）
     void refreshAccentButtons();
-    void pickCustomAccent() { QColor c = QColorDialog::getColor(m_accent, this, T("选择强调色")); if (c.isValid()) setAccent(c); }
+    void pickCustomAccent();
 
-    static QString u8(const std::string& s) { return QString::fromUtf8(s.c_str()); }
+    static QString u8(const std::string& s);
 
     // ================= 从 V0.3.0 注册表搬迁设置（一次性） =================
     // 旧版设置存在 HKCU\Software\ExcelSearch；本版改用 %APPDATA%\ExcelSearch\config.ini。
@@ -609,7 +593,7 @@ private:
     void saveSettings();
 
     // 共享模式：缓存 TTL 单独缩短为 30 小时（共享数据由分享机管理员维护，避免长期陈旧）
-    long long cacheTtlSec() const { return m_shareMode ? (30LL * 3600) : (10LL * 24 * 3600); }
+    long long cacheTtlSec()const;
     // 数据加载与缓存复用（实现见 app_window_config.cpp）
     void loadData(bool forceReload = false);
     bool tryLoadCache();
@@ -623,9 +607,9 @@ private:
     void onLoadFinished();
     // 智能列：按「表头包含关键词 + 精确匹配加权」选列（实现见 app_window_settings_smartcols.cpp）
     std::map<std::pair<std::string, std::string>, int> buildColMap(const std::string& target) const;
-    void buildColMaps() { m_renWuColMap = buildColMap("任务标题"); m_colMapCache.clear(); }
+    void buildColMaps();
     // ---- 可配置智能列 ----
-    static bool isMetaCol(const std::string& s) { return s == kMetaSheetCol || s == kMetaRowCol; }
+    static bool isMetaCol(const std::string& s);
     // 去重收集全部工作簿表头（供下拉候选与校验）——实现见 app_window_settings_smartcols.cpp
     QStringList allHeaderNames() const;
     // 把用户输入解析成「实际可用的列来源」：内建元数据原样通过 → 表头包含 → rapidfuzz 兜底（低于阈值视为不存在）
@@ -646,11 +630,11 @@ private:
     // 统计卡片数值滚动（实现见 app_window_search.cpp；四条要点见该文件头注释）
     void setStat(QPushButton* btn, qulonglong target, int delayMs = 0);
     // 三个数字之间的错峰：已加载文件 → 索引记录 → 本次命中（0 / 40 / 80ms）
-    void setHitStat(qulonglong n) { setStat(m_statHit, n, 2 * kStaggerMs); }
+    void setHitStat(qulonglong n);
     void updateStats();
     // 一级搜索（实现见 app_window_search.cpp）
     void doSearch();
-    void showHitTip() { QToolTip::showText(QCursor::pos(), QString(T("精确 %1 条 · 模糊 %2 条")).arg(m_lastExact).arg(m_lastFuzzy), this); }
+    void showHitTip();
     // 筛选链应用：从一级结果快照逐级重算（实现见 app_window_search.cpp）
     void applyFilterChain();
     // 二级筛选（实现见 app_window_search.cpp）

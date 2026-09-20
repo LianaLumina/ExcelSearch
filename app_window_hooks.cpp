@@ -10,6 +10,11 @@
 //   waitForLoad        —— 等后台加载结束（带超时上界，超时置 m_loadTimedOut）
 // ⚠️ 这些方法名被 tools/selfcheck.ps1 与截图脚本按名字调用，**改名会直接打断自检链路**。
 #include "app_window.h"
+#include "dialogs.h"
+#include "loading.h"
+#include <QLineEdit>
+#include <QSystemTrayIcon>
+#include <QToolTip>
 
 // 自检钩子：--migrate 强制执行一次「注册表 → config.ini」搬迁，摘要写 --out（供验证/客服排障）
 QString AppWindow::demoMigrate() {
@@ -130,3 +135,35 @@ qulonglong AppWindow::demoFilter(const char* kw) {
     if (m_filterEdit) { m_filterEdit->setText(QString::fromUtf8(kw)); doFilter(); }
     return (qulonglong)m_results.size();
 }
+
+// —— B12-step2：从类内搬出的单行成员函数（逻辑一字未改）——
+    int AppWindow::advSectionCount() const { return (int)m_advSecs.size(); }
+    void AppWindow::demoSearch(const char* kw) { if (m_searchEdit) { m_searchEdit->setText(QString::fromUtf8(kw)); doSearch(); } }
+    qulonglong AppWindow::demoHits(const char* kw) { demoSearch(kw); return (qulonglong)m_results.size(); }
+    QString AppWindow::demoResolveColumn(const char* text) const { return u8(resolveColumnSource(text)); }
+    int AppWindow::failedFileCountC() const { return m_failedCount; }
+    QString AppWindow::failedListC() const { return m_failedList; }
+    bool AppWindow::loadTimedOutC() const { return m_loadTimedOut; }
+    int AppWindow::cfgEncFailC() const { return m_cfgEncFail; }
+    bool AppWindow::cfgKeyReadyC() const { return m_cfgKeyReady; }
+    int AppWindow::demoBlocked() const { return m_lastBlocked; }
+    int AppWindow::blockedEntryCount() const { return (int)m_marks.blockedEntries.size(); }
+    int AppWindow::blockedFileCount() const { return (int)m_marks.blockedFiles.size(); }
+    int AppWindow::markedCount() const { return (int)m_marks.marked.size(); }
+    int AppWindow::historyCount() const { return (int)m_history.size(); }
+    int AppWindow::historyShow() const { return m_histShow; }
+    int AppWindow::historyTtl() const { return m_histTtlMin; }
+    const char* AppWindow::filterMode() const { return m_chainMode ? "chain" : "standard"; }
+    bool AppWindow::shareEnabled() const { return m_shareMode; }
+    bool AppWindow::trayActive() const { return m_tray && m_tray->isVisible(); }
+    bool AppWindow::manualNeverShowC() const { return m_manualNeverShow; }
+    const char* AppWindow::closeActionName() const { return m_closeAction == 1 ? "close" : (m_closeAction == 2 ? "tray" : "ask"); }
+    const char* AppWindow::animName() const { return g_noAnim ? "off" : "on"; }
+    const char* AppWindow::sharePathC() const { return m_sharePath.c_str(); }
+    int AppWindow::exportAllTo(const char* file) { return exportXlsxTo(m_results, file) ? 1 : 0; }
+    int AppWindow::loadedCount() const { return m_loadedFiles; }
+    int AppWindow::skippedCount() const { return m_skipped; }
+    qulonglong AppWindow::entryCount() const { return (qulonglong)m_engine.getEntryCount(); }
+    bool AppWindow::usedCache() const { return m_usedCache; }
+    void AppWindow::setHitStat(qulonglong n) { setStat(m_statHit, n, 2 * kStaggerMs); }
+    void AppWindow::showHitTip() { QToolTip::showText(QCursor::pos(), QString(T("精确 %1 条 · 模糊 %2 条")).arg(m_lastExact).arg(m_lastFuzzy), this); }

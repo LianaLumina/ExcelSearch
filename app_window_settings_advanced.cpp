@@ -4,6 +4,9 @@
 //       设置管理密码 makePasswordSec；以及屏蔽列表刷新 refreshBlockAdmin、按色清标记 clearMarksByColor、
 //       结果表标记色条原地刷新 refreshTableMarks。
 #include "app_window.h"
+#include "dialogs.h"
+#include <QLineEdit>
+#include <QStackedWidget>
 #include "config_crypto.h"   // 管理密码改存 PBKDF2 哈希后，解锁校验必须走 VerifyPassword
 
 // 高级设置的门禁栈（解锁层 ↔ 真实内容）切换：只淡入、不做位移 —— 密码框跟着滑会显得轻浮

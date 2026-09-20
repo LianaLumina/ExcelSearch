@@ -4,6 +4,15 @@
 //       onLoadFinished（后台加载、缓存命中与回退、收尾）；briefNames / emptySourceHint（提示文案）。
 // ★ 本文件是"config.ini 敏感值加密加固"的落点（见 CONFIG-HARDENING-PLAN.md）。
 #include "app_window.h"
+#include <QSystemTrayIcon>
+#include "dialogs.h"
+#include "loading.h"
+#include "xse_codec.h"
+#include <QDateTime>
+#include <QDialog>
+#include <QFile>
+#include <QLineEdit>
+#include <QMenu>
 #include "config_crypto.h"   // 敏感值加密 / 管理密码哈希（见文件头第 5 行）
 
 void AppWindow::apply() {
@@ -407,3 +416,8 @@ void AppWindow::onLoadFinished() {
     buildColMaps();
     m_worker->deleteLater(); m_worker = nullptr;
 }
+
+// —— B12-step2：从类内搬出的单行成员函数（逻辑一字未改）——
+    std::string AppWindow::dataSourceDir() const { return m_shareMode ? m_sharePath : m_dataDir; }
+    void AppWindow::setShareStatus(const QString& s) { m_shareStatusText = s; if (m_shareStatus) m_shareStatus->setText(s); }
+    long long AppWindow::cacheTtlSec() const { return m_shareMode ? (30LL * 3600) : (10LL * 24 * 3600); }

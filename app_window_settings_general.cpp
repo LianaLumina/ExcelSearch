@@ -1,6 +1,9 @@
 // 通用设置页与其中搜索设置子卡的 AppWindow 方法（B7 从 app_window.h 的类内内联定义搬出，逻辑一字未改）。
 // 通用设置：外观（原「界面设置」并入）+ 关闭选项；搜索设置子卡：模糊开关与筛选模式等。
 #include "app_window.h"
+#include <QButtonGroup>
+#include <QCheckBox>
+#include <QRadioButton>
 
 // 通用设置：目前只有「关闭选项设置」（关闭行为 + 是否询问），后续通用项也放这里
 // 通用设置：外观（原「界面设置」并入）+ 关闭选项设置。设置项变多后按"通用"归并，减少左侧标签数量
