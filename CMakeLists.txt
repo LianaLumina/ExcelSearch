@@ -26,6 +26,7 @@ add_executable(excel_search
     app_window_manual.cpp   # B2：AppWindow 的说明书粘合方法（从 app_window.h 搬出）
     app_window_history.cpp  # B3：AppWindow 的搜索历史方法（从 app_window.h 搬出）
     app_window_settings_smartcols.cpp   # B4：AppWindow 的可配置智能列（从 app_window.h 搬出）
+    app_window_settings_share.cpp       # B5：AppWindow 的共享模式与附加加密（从 app_window.h 搬出）
 loading.cpp
 data_model.cpp
 manual_window.cpp
