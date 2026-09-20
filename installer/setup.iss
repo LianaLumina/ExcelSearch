@@ -79,6 +79,8 @@ Filename: "{app}\{#MyAppExeName}"; Description: "启动 {#MyAppName}"; Flags: no
 
 [UninstallDelete]
 ; 只清理可能的空目录；**data 目录与用户配置一律不在此处删除**，改由 [Code] 段询问后处理
+Type: files; Name: "{app}\uninstall.exe"
+Type: files; Name: "{app}\uninstall.dat"
 Type: dirifempty; Name: "{app}\licenses\msys2"
 Type: dirifempty; Name: "{app}\licenses"
 Type: dirifempty; Name: "{app}\platforms"
@@ -388,7 +390,13 @@ begin
 
   NewExe := AppDir + '\uninstall.exe';
   NewDat := AppDir + '\uninstall.dat';
-  if FileExists(NewExe) then Exit;          // 已改过
+  if FileExists(NewExe) then
+  begin
+    // 重装场景：上一轮改名出来的 uninstall.* 必须先清掉，否则会与本轮新的 unins000.* 并存，
+    // 卸载时 Inno 只清自己的 unins000.*，改名产物就变成孤儿（实测残留 3 个文件）。
+    DeleteFile(NewExe);
+    DeleteFile(NewDat);
+  end;
 
   if not RenameFile(OldExe, NewExe) then Exit;
   if not RenameFile(OldDat, NewDat) then

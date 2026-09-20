@@ -482,6 +482,9 @@ class AppWindow : public QWidget {
     QLineEdit* m_encEdit = nullptr;
     int m_loadedFiles = 0;
     int m_skipped = 0;   // 需要附加密码未加载的加密文件数
+    int m_failedCount = 0;        // 读取失败的文件数（--report 的 failedFiles=）
+    QString m_failedList;         // 读取失败的文件名清单（--report 的 failedList=）
+    bool m_loadTimedOut = false;  // waitForLoad 是否超时（--report 的 loadTimeout=）
     LoadWorker* m_worker = nullptr;
     bool m_addPwdEnabled = false;      // 附加密码（加密设置）
     std::string m_addPwd;
@@ -785,6 +788,10 @@ public:
     qulonglong demoHits(const char* kw) { demoSearch(kw); return (qulonglong)m_results.size(); }
     // 自检钩子：--colprobe 打印列名解析结果（空串 = UI 会提示「所输入的列不存在」）
     QString demoResolveColumn(const char* text) const { return u8(resolveColumnSource(text)); }
+    // 自检查询：读取失败的文件数与清单、加载是否超时（供 --report 输出）
+    int failedFileCountC() const { return m_failedCount; }
+    QString failedListC() const { return m_failedList; }
+    bool loadTimedOutC() const { return m_loadTimedOut; }
     // 自检钩子：--search <一级> --filter <二级> 时返回二级筛选后的条数
     qulonglong demoFilter(const char* kw) {
         if (m_filterEdit) { m_filterEdit->setText(QString::fromUtf8(kw)); doFilter(); }
@@ -979,7 +986,7 @@ public:
         if (on && m_sharePath.empty()) { setShareStatus(T("请先填写共享路径")); return; }
         m_shareMode = on;
         saveSettings();
-        m_engine.clear(); m_loadedFiles = 0; m_skipped = 0; updateStats();
+        m_engine.clear(); m_loadedFiles = 0; m_skipped = 0; m_failedCount = 0; m_failedList.clear(); m_loadTimedOut = false; updateStats();
         setShareStatus(on ? T("已切换到共享模式，正在重新加载…") : T("已切换到离线模式，正在重新加载…"));
         loadData();
     }
@@ -989,11 +996,17 @@ public:
     qulonglong entryCount() const { return (qulonglong)m_engine.getEntryCount(); }
     bool usedCache() const { return m_usedCache; }
     void setDark(bool d) { m_dark = d; apply(); }
-    void waitForLoad() {
+    void waitForLoad(int timeoutMs = 120000) {
         // 注意：worker 可能已经结束（例如共享目录瞬时不可达时几微秒就返回），此时 finished 的
         // 队列槽（onLoadFinished / 缓存兜底）还没跑，必须泵一次事件循环，否则自检会读到中间态。
         if (!m_worker || !m_worker->isRunning()) { QCoreApplication::processEvents(); return; }
-        QEventLoop loop; connect(m_worker, &LoadWorker::finished, &loop, &QEventLoop::quit); loop.exec();
+        QEventLoop loop;
+        connect(m_worker, &LoadWorker::finished, &loop, &QEventLoop::quit);
+        QTimer timeoutTimer; timeoutTimer.setSingleShot(true);
+        connect(&timeoutTimer, &QTimer::timeout, &loop, &QEventLoop::quit);
+        timeoutTimer.start(timeoutMs);
+        loop.exec();
+        if (m_worker && m_worker->isRunning()) m_loadTimedOut = true;   // 超时：调用方据此报错
         QCoreApplication::processEvents();
     }
     // 给界面上的 QSS 控件统一挂状态过渡：按钮（hover/按下/圆角）+ 输入框（焦点边框）。
@@ -1420,6 +1433,12 @@ private:
         m_engine.setFileMeta(mt, sz);   // 记录磁盘元数据，供缓存一致性校验
         updateStats();
         const int failedN = (int)m_worker->failed.size();
+        {   // 保留失败文件清单（worker 稍后会被 deleteLater，届时拿不到）
+            QStringList fl;
+            for (const auto& fn : m_worker->failed) fl << QString::fromUtf8(fn.c_str());
+            m_failedCount = failedN;
+            m_failedList = fl.join(QStringLiteral(","));
+        }
         const int emptyN  = (int)m_worker->emptyData.size();
         if (m_status) {
             if (m_loadedFiles == 0 && failedN == 0 && emptyN == 0 && skipped == 0) {
@@ -2898,6 +2917,9 @@ int main(int argc, char** argv) {
         std::ofstream o(report.toLocal8Bit().constData());
         o << "files=" << w.loadedCount() << "\nentries=" << w.entryCount() << "\nskipped=" << w.skippedCount()
           << "\ncache=" << (w.usedCache() ? "hit" : "miss")
+          << "\nfailedFiles=" << w.failedFileCountC()
+          << "\nfailedList=" << w.failedListC().toUtf8().constData()
+          << "\nloadTimeout=" << (w.loadTimedOutC() ? "1" : "0")
           << "\nblockedEntries=" << w.blockedEntryCount() << "\nblockedFiles=" << w.blockedFileCount()
           << "\nmarked=" << w.markedCount()
           << "\nhist=" << w.historyCount() << "\nhistShow=" << w.historyShow() << "\nhistTtl=" << w.historyTtl()
