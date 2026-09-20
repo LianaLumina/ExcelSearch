@@ -23,6 +23,7 @@ set(RAPIDFUZZ ${TP}/rapidfuzz)
 
 add_executable(excel_search
     main.cpp
+    app_window_manual.cpp   # B2：AppWindow 的说明书粘合方法（从 app_window.h 搬出）
 loading.cpp
 data_model.cpp
 manual_window.cpp
