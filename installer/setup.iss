@@ -327,6 +327,54 @@ begin
   Result := ShowUninstallOptions();
 end;
 
+// 清掉 {app} 下卸载后剩下的**空目录骨架**。
+// 背景（实测）：只装一次再卸载是干净的；但**覆盖安装（升级）后再卸载**会留下 25 个空目录
+// （data / generic / imageformats / licenses / networkinformation / styles / tls 及其子目录）。
+// 原因是 Inno 在升级时会重写卸载日志，之前那轮的目录归属记录丢失，它便不再删这些目录。
+// 因此这里自己收尾，规则极其保守：**只调 RemoveDir**（Pascal Script 里它只在空目录上成功，
+// 非空必然失败且无副作用）——绝不使用 DelTree，因为实测
+// DelTree(dir, IsDeleteFiles=False, True, True) 仍会把目录里的文件一起删掉，
+// 曾经把用户 data 目录里的表格文件误删。自底向上递归，data 里有文件就自然保留。
+procedure RemoveEmptyTree(Dir: String);
+var
+  FindRec: TFindRec;
+  Name: String;
+begin
+  if not DirExists(Dir) then Exit;
+  if FindFirst(Dir + '\*', FindRec) then
+  begin
+    repeat
+      Name := FindRec.Name;
+      // ⚠️ Inno 的 FindFirst 会返回 "." 与 ".."（实测：name=[.] dir=1 / name=[..] dir=1）。
+      //    若不过滤，递归会先在 "." 上自递归、永不返回 —— 曾因此在卸载器里死循环直至被杀。
+      if (CompareText(Name, '.') <> 0) and (CompareText(Name, '..') <> 0)
+         and ((FindRec.Attributes and FILE_ATTRIBUTE_DIRECTORY) <> 0) then
+        RemoveEmptyTree(Dir + '\' + Name);   // 先掏空子目录
+    until not FindNext(FindRec);
+    FindClose(FindRec);
+  end;
+  RemoveDir(Dir);   // 空则删掉，非空则失败（无害）
+end;
+
+procedure RemoveEmptyDirs();
+var
+  FindRec: TFindRec;
+  AppDir, Name: String;
+begin
+  AppDir := ExpandConstant('{app}');
+  if FindFirst(AppDir + '\*', FindRec) then
+  begin
+    repeat
+      Name := FindRec.Name;
+      if (CompareText(Name, '.') <> 0) and (CompareText(Name, '..') <> 0)
+         and ((FindRec.Attributes and FILE_ATTRIBUTE_DIRECTORY) <> 0) then
+        RemoveEmptyTree(AppDir + '\' + Name);
+    until not FindNext(FindRec);
+    FindClose(FindRec);
+  end;
+  RemoveDir(AppDir);   // {app}\data 里还有用户的表格文件时，这一步会失败，目录被保留
+end;
+
 procedure CurUninstallStepChanged(CurUninstallStep: TUninstallStep);
 var
   Msg: String;
@@ -338,6 +386,8 @@ begin
       DelTree(ExpandConstant('{app}\data'), True, True, True);
     if DeleteUserConfig then
       DelTree(ExpandConstant('{userappdata}\ExcelSearch'), True, True, True);
+
+    RemoveEmptyDirs();
 
     if UninstallSilent then Exit;   // 静默卸载不弹结果框
 
@@ -362,7 +412,8 @@ end;
 // 背景：Inno 官方不支持自定义卸载器文件名（实测 6.7.3 无该指令）。
 // 做法：把 unins000.exe 与 unins000.dat **一起**改名（卸载器按自身文件名推导 .dat，必须同改），
 //       再同步注册表卸载入口；任一步失败都回滚，保证「卸载器能正常用」优先于「名字好看」。
-// 说明：必须同时挂 ssPostInstall 与 ssDone —— **静默安装下 ssDone 不会触发**（曾因此漏改）。
+// 说明：ssPostInstall 与 ssDone 都挂了（实测静默安装下两个都会触发），所以**本函数必须幂等**：
+//       第二次调用必须认得出「已经改好了」，绝不能再动 uninstall.*。
 procedure RenameUninstaller();
 var
   FindRec: TFindRec;
@@ -375,21 +426,27 @@ begin
     AppId := Copy(AppId, 2, Length(AppId) - 1);
   RegKey := 'SOFTWARE\Microsoft\Windows\CurrentVersion\Uninstall\' + AppId + '_is1';
 
+  NewExe := AppDir + '\uninstall.exe';
+  NewDat := AppDir + '\uninstall.dat';
+
+  // ⚠️ 查找源文件时必须排除 uninstall.exe 自己：它的名字也以 "unins" 开头，会被
+  //    FindFirst('unins*.exe') 命中。第二次调用（ssPostInstall 之后再触发 ssDone）若把它
+  //    当成「上一轮的残留」删掉，接着 RenameFile 因源文件已不存在而失败 —— 结果是卸载器
+  //    整个消失、注册表却仍指向 uninstall.exe（实测：点卸载直接报「找不到文件」）。
+  //    这是 0.3.2 修「重装残留」时引入的回归，务必保持幂等。
   OldExe := '';
   if FindFirst(AppDir + '\unins*.exe', FindRec) then
   begin
-    try
-      OldExe := AppDir + '\' + FindRec.Name;
-    finally
-      FindClose(FindRec);
-    end;
+    repeat
+      if CompareText(FindRec.Name, 'uninstall.exe') <> 0 then
+        OldExe := AppDir + '\' + FindRec.Name;
+    until (OldExe <> '') or (not FindNext(FindRec));
+    FindClose(FindRec);
   end;
-  if OldExe = '' then Exit;
+  if OldExe = '' then Exit;   // 还没生成，或本轮已经改过名（幂等出口）
   OldDat := Copy(OldExe, 1, Length(OldExe) - 4) + '.dat';
   if not FileExists(OldDat) then Exit;
 
-  NewExe := AppDir + '\uninstall.exe';
-  NewDat := AppDir + '\uninstall.dat';
   if FileExists(NewExe) then
   begin
     // 重装场景：上一轮改名出来的 uninstall.* 必须先清掉，否则会与本轮新的 unins000.* 并存，
