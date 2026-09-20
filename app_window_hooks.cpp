@@ -126,3 +126,7 @@ void AppWindow::waitForLoad(int timeoutMs) {
     if (m_worker && m_worker->isRunning()) m_loadTimedOut = true;   // 超时：调用方据此报错
     QCoreApplication::processEvents();
 }
+qulonglong AppWindow::demoFilter(const char* kw) {
+    if (m_filterEdit) { m_filterEdit->setText(QString::fromUtf8(kw)); doFilter(); }
+    return (qulonglong)m_results.size();
+}

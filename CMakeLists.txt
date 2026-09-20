@@ -34,6 +34,7 @@ add_executable(excel_search
     config_crypto.cpp                    # 加固：config.ini 敏感值加密 + 管理密码哈希（DPAPI + AES-GCM）
     app_window_search.cpp                # B9：搜索页与结果表（从 app_window.h 搬出）
     app_window_hooks.cpp                 # B10：自检钩子支撑方法（从 app_window.h 搬出）
+    app_window.cpp                       # B11：窗口外壳与生命周期（从 app_window.h 搬出）
 loading.cpp
 data_model.cpp
 manual_window.cpp
