@@ -1,5 +1,6 @@
 #pragma once
 // 数据模型：加载后的文档与文件、标记与搜索历史存储、结果表行委托，以及相关的常量表。
+#include "config_crypto.h"   // MarkStore 的屏蔽/标记与 config.ini 其余敏感项共用同一套加解密
 #include <QColor>
 #include <QString>
 #include <QStringList>
@@ -86,19 +87,39 @@ struct MarkStore {
     bool empty() const { return blockedEntries.empty() && blockedFiles.empty() && marked.empty(); }
     void clearAll() { blockedEntries.clear(); blockedFiles.clear(); marked.clear(); }
 
+    int lastLoadFailures = 0;   // 上次 load() 里"是密文却解不开"的项数（汇总进 --report 的 cfgEncFail=）
+
+    // 屏蔽/标记也是敏感内容（文件名/表名/行号），与 config.ini 其余敏感项走同一套 config_crypto：
+    //   读：解密失败 → 计数并跳过该项（绝不静默清空，也不把密文当数据用）；
+    //   写：主密钥不可用时**整体跳过**，保留原密文不被覆盖。
+    static QString decValue(const QString& raw, int* failCount) {
+        std::string out; bool wasProtected = false;
+        if (cfgcrypto::Unprotect(raw.toUtf8().toStdString(), &out, &wasProtected)) {
+            return QString::fromUtf8(out.c_str());
+        }
+        if (wasProtected && failCount) ++(*failCount);
+        return QString();
+    }
+    static void encValue(QSettings& s, const char* key, const QString& plain) {
+        if (!cfgcrypto::KeyReady()) return;   // 密钥不可用：不写，保留原值
+        const std::string e = cfgcrypto::Protect(plain.toUtf8().toStdString());
+        if (!e.empty()) s.setValue(QString::fromLatin1(key), QString::fromUtf8(e.c_str()));
+    }
+
     void load(QSettings& s) {
         clearAll();
+        lastLoadFailures = 0;
         auto splitLines = [](const QString& text) {
             std::vector<QString> out;
             for (const QString& ln : text.split('\n', Qt::SkipEmptyParts)) { QString t = ln.trimmed(); if (!t.isEmpty()) out.push_back(t); }
             return out;
         };
-        for (const QString& f : splitLines(s.value("block/files").toString())) blockedFiles.insert(f.toUtf8().toStdString());
-        for (const QString& ln : splitLines(s.value("block/entries").toString())) {
+        for (const QString& f : splitLines(decValue(s.value("block/files").toString(), &lastLoadFailures))) blockedFiles.insert(f.toUtf8().toStdString());
+        for (const QString& ln : splitLines(decValue(s.value("block/entries").toString(), &lastLoadFailures))) {
             auto p = ln.split('|');   // fn|sheet|row
             if (p.size() == 3) blockedEntries.insert({ p[0].toUtf8().toStdString(), p[1].toUtf8().toStdString(), p[2].toInt() });
         }
-        for (const QString& ln : splitLines(s.value("mark/entries").toString())) {
+        for (const QString& ln : splitLines(decValue(s.value("mark/entries").toString(), &lastLoadFailures))) {
             auto p = ln.split('|');   // fn|sheet|row|color
             if (p.size() == 4) marked[{ p[0].toUtf8().toStdString(), p[1].toUtf8().toStdString(), p[2].toInt() }] = p[3].toInt();
         }
@@ -111,9 +132,9 @@ struct MarkStore {
             const auto& [fn, sn, r] = k;
             me << QString::fromUtf8((fn + "|" + sn + "|" + std::to_string(r) + "|" + std::to_string(c)).c_str());
         }
-        s.setValue("block/files", bf.join('\n'));
-        s.setValue("block/entries", be.join('\n'));
-        s.setValue("mark/entries", me.join('\n'));
+        encValue(s, "block/files", bf.join('\n'));
+        encValue(s, "block/entries", be.join('\n'));
+        encValue(s, "mark/entries", me.join('\n'));
     }
 };
 

@@ -487,6 +487,8 @@ class AppWindow : public QWidget {
     int m_failedCount = 0;        // 读取失败的文件数（--report 的 failedFiles=）
     QString m_failedList;         // 读取失败的文件名清单（--report 的 failedList=）
     bool m_loadTimedOut = false;  // waitForLoad 是否超时（--report 的 loadTimeout=）
+    int m_cfgEncFail = 0;         // config.ini 里"是密文却解不开"的项数（--report 的 cfgEncFail=）
+    bool m_cfgKeyReady = false;   // 主密钥是否装载成功（DPAPI 解不开时为 false，此时不覆写敏感键）
     LoadWorker* m_worker = nullptr;
     bool m_addPwdEnabled = false;      // 附加密码（加密设置）
     std::string m_addPwd;
@@ -685,6 +687,9 @@ public:
     int failedFileCountC() const { return m_failedCount; }
     QString failedListC() const { return m_failedList; }
     bool loadTimedOutC() const { return m_loadTimedOut; }
+    // 加固自检：config.ini 解密失败项数 / 主密钥是否可用（供 --report 输出）
+    int cfgEncFailC() const { return m_cfgEncFail; }
+    bool cfgKeyReadyC() const { return m_cfgKeyReady; }
     // 自检钩子：--search <一级> --filter <二级> 时返回二级筛选后的条数
     qulonglong demoFilter(const char* kw) {
         if (m_filterEdit) { m_filterEdit->setText(QString::fromUtf8(kw)); doFilter(); }

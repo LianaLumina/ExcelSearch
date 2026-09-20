@@ -325,6 +325,7 @@ int main(int argc, char** argv) {
           << "\nfailedFiles=" << w.failedFileCountC()
           << "\nfailedList=" << w.failedListC().toUtf8().constData()
           << "\nloadTimeout=" << (w.loadTimedOutC() ? "1" : "0")
+          << "\ncfgEncFail=" << w.cfgEncFailC() << "\ncfgKeyReady=" << (w.cfgKeyReadyC() ? "1" : "0")
           << "\nblockedEntries=" << w.blockedEntryCount() << "\nblockedFiles=" << w.blockedFileCount()
           << "\nmarked=" << w.markedCount()
           << "\nhist=" << w.historyCount() << "\nhistShow=" << w.historyShow() << "\nhistTtl=" << w.historyTtl()

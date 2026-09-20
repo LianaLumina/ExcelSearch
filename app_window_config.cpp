@@ -4,6 +4,7 @@
 //       onLoadFinished（后台加载、缓存命中与回退、收尾）；briefNames / emptySourceHint（提示文案）。
 // ★ 本文件是"config.ini 敏感值加密加固"的落点（见 CONFIG-HARDENING-PLAN.md）。
 #include "app_window.h"
+#include "config_crypto.h"   // 敏感值加密 / 管理密码哈希（见文件头第 5 行）
 
 void AppWindow::apply() {
     auto p = makeProto(m_dark, m_accent);
@@ -102,14 +103,42 @@ bool AppWindow::migrateFromRegistry(bool force, QString* detail) {
 }
 void AppWindow::loadSettings() {
     QSettings s(QString::fromUtf8(m_settingsPath.c_str()), QSettings::IniFormat);
+    const QString cfgFile = QString::fromUtf8(m_settingsPath.c_str());
+
+    // ================= 敏感值加密（config.ini 加固；设计与边界见 CONFIG-HARDENING-PLAN.md）=================
+    // 主密钥：从 [meta] keyblob 装载；首次运行则新生成并回填。DPAPI 解不开（换账户/换机器/
+    // 管理员重置密码）时 keyOk=false —— 之后所有敏感项都会解不开，由下面的 rd 计数并退回默认值，
+    // 且 saveSettings 会**跳过**这些键的写入，保证原密文不被覆盖。
+    m_cfgEncFail = 0;
+    const QString keyblob = s.value("meta/keyblob").toString();
+    bool keyCreated = false;
+    std::string newBlob;
+    m_cfgKeyReady = cfgcrypto::LoadOrCreateKey(keyblob.toUtf8().toStdString(), &keyCreated, &newBlob);
+    if (m_cfgKeyReady && keyCreated) s.setValue("meta/keyblob", QString::fromUtf8(newBlob.c_str()));
+
+    // 读"可能是密文"的值：解密成功 → 明文；本是密文却解不开 → 计数 + 退回默认（绝不静默清空）
+    auto rdRaw = [&](const char* key) -> QString {
+        const QString raw = s.value(QString::fromLatin1(key)).toString();
+        std::string out; bool wasProtected = false;
+        if (cfgcrypto::Unprotect(raw.toUtf8().toStdString(), &out, &wasProtected)) {
+            return QString::fromUtf8(out.c_str());
+        }
+        if (wasProtected) ++m_cfgEncFail;
+        return QString();
+    };
+    auto rd = [&](const char* key, const QString& def) -> QString {
+        const QString v = rdRaw(key);
+        return v.isEmpty() ? def : v;
+    };
+
     m_dark = s.value("ui/dark", false).toBool();
     m_accent = QColor(s.value("ui/accent", "#326cf3").toString());
     m_fuzzyEnabled = s.value("search/fuzzy", true).toBool();
     // ★回迁注意：默认「标准模式」(standard)，原版行为(就地逐级缩)作为可选项 chain
     m_chainMode = (s.value("filter/mode", "standard").toString() == "chain");
     m_addPwdEnabled = s.value("crypto/addPwdEnabled", false).toBool();
-    m_addPwd = s.value("crypto/addPwd", "").toString().toUtf8().toStdString();
-    m_sharePath = s.value("share/path", QString::fromUtf8("\\\\server\\share\\excel_search")).toString().toUtf8().toStdString();
+    m_addPwd = rdRaw("crypto/addPwd").toUtf8().toStdString();
+    m_sharePath = rd("share/path", QString::fromUtf8("\\\\server\\share\\excel_search")).toUtf8().toStdString();
     // ★回迁注意：共享模式（数据源切换）与离线模式并存；原版是 g_shareMode + g_dataFolder 覆盖
     m_shareMode = s.value("share/enabled", false).toBool();
     // 关闭行为：ask(默认) / close / tray
@@ -118,13 +147,15 @@ void AppWindow::loadSettings() {
         m_closeAction = (ca == "close") ? 1 : (ca == "tray" ? 2 : 0);
     }
     m_marks.load(s);
+    m_cfgEncFail += m_marks.lastLoadFailures;   // 屏蔽/标记里解不开的项也计入（--report 的 cfgEncFail=）
     m_manualNeverShow = s.value("manual/neverShow", false).toBool();
+    // 管理密码：这里存的是"PBKDF2 哈希"（旧版遗留的明文原样保留，校验走同一入口并在保存时迁移）
     m_adminPassword = s.value("admin/password", QString::fromUtf8(kDefaultAdminPassword)).toString().toUtf8().toStdString();
     // 智能列配置：换行分隔的来源列表。
     // 键「不存在」→ 用默认布局（原版 7 列）；键存在但为空 → 用户主动只保留固定 3 列。
     if (s.contains("smartcols/list")) {
         std::vector<std::string> cols;
-        for (const QString& ln : s.value("smartcols/list").toString().split('\n', Qt::SkipEmptyParts)) {
+        for (const QString& ln : rdRaw("smartcols/list").split('\n', Qt::SkipEmptyParts)) {
             const QString t = ln.trimmed();
             if (!t.isEmpty()) cols.push_back(t.toUtf8().toStdString());
         }
@@ -139,7 +170,7 @@ void AppWindow::loadSettings() {
     if (m_histTtlMin != 0 && m_histTtlMin < kHistTtlMinMinute) m_histTtlMin = kHistTtlMinMinute;
     m_history.clear();
     if (m_histTtlMin != 0) {
-        for (const QString& ln : s.value("hist/items").toString().split('\n', Qt::SkipEmptyParts)) {
+        for (const QString& ln : rdRaw("hist/items").split('\n', Qt::SkipEmptyParts)) {
             const int tab = ln.indexOf('\t');
             if (tab <= 0) continue;
             bool ok = false;
@@ -149,6 +180,17 @@ void AppWindow::loadSettings() {
         }
         purgeHistory();   // 载入时先按当前时效清一遍
     }
+
+    // ---- 迁移：旧版明文配置 → 加密落盘 ----
+    // 迁移前留一份明文备份（config.ini.premigrate）；下一次启动若确认"已加密且零解密失败"就删掉它，
+    // 这样明文只多存在一轮，且出问题时人工可恢复。
+    const QString bak = cfgFile + ".premigrate";
+    const bool encVersioned = s.value("meta/encVersion", 0).toInt() >= 1;
+    if (!encVersioned) {
+        if (!QFile::exists(bak) && QFile::exists(cfgFile)) QFile::copy(cfgFile, bak);
+    } else if (m_cfgEncFail == 0) {
+        if (QFile::exists(bak)) QFile::remove(bak);
+    }
 }
 void AppWindow::saveSettings() {
     QSettings s(QString::fromUtf8(m_settingsPath.c_str()), QSettings::IniFormat);
@@ -157,27 +199,48 @@ void AppWindow::saveSettings() {
     s.setValue("search/fuzzy", m_fuzzyEnabled);
     s.setValue("filter/mode", m_chainMode ? "chain" : "standard");   // ★回迁注意：见 loadSettings
     s.setValue("crypto/addPwdEnabled", m_addPwdEnabled);
-    s.setValue("crypto/addPwd", QString::fromUtf8(m_addPwd.c_str()));
-    s.setValue("share/path", QString::fromUtf8(m_sharePath.c_str()));
     s.setValue("share/enabled", m_shareMode);
     s.setValue("ui/closeAction", m_closeAction == 1 ? "close" : (m_closeAction == 2 ? "tray" : "ask"));
     s.setValue("manual/neverShow", m_manualNeverShow);
-    m_marks.save(s);
-    s.setValue("admin/password", QString::fromUtf8(m_adminPassword.c_str()));
+    m_marks.save(s);   // MarkStore 内部同样走 config_crypto（屏蔽/标记也是敏感内容）
     {
         QStringList cols;
         for (const auto& c : m_extraCols) cols << QString::fromUtf8(c.c_str());
-        s.setValue("smartcols/list", cols.join('\n'));
+        s.setValue("smartcols/list", QString());   // 先清空明文遗留，稍后按需写密文
     }
-    // 搜索历史：时效为「关闭程序后删除」时不写任何条目（不做留存）
     s.setValue("hist/show", m_histShow);
     s.setValue("hist/ttl", m_histTtlMin);
-    if (m_histTtlMin == 0) {
-        s.setValue("hist/items", QString());
-    } else {
-        QStringList its;
-        for (const auto& h : m_history) its << (QString::number(h.ts) + '\t' + h.kw);
-        s.setValue("hist/items", its.join('\n'));
+
+    // ================= 敏感值：加密后落盘 =================
+    // 主密钥不可用（DPAPI 解不开）时**整段跳过** —— 保留原密文不动，也绝不写明文覆盖。
+    if (m_cfgKeyReady) {
+        auto wr = [&](const char* key, const QString& plain) {
+            const std::string enc = cfgcrypto::Protect(plain.toUtf8().toStdString());
+            if (!enc.empty()) s.setValue(QString::fromLatin1(key), QString::fromUtf8(enc.c_str()));
+            // 加密失败（enc 为空）→ 不写该键，保留原值，避免把明文落到盘上
+        };
+        wr("crypto/addPwd", QString::fromUtf8(m_addPwd.c_str()));
+        wr("share/path", QString::fromUtf8(m_sharePath.c_str()));
+        {
+            QStringList cols;
+            for (const auto& c : m_extraCols) cols << QString::fromUtf8(c.c_str());
+            wr("smartcols/list", cols.join('\n'));
+        }
+        // 搜索历史：时效为「关闭程序后删除」时不写任何条目（不做留存）
+        if (m_histTtlMin == 0) {
+            wr("hist/items", QString());
+        } else {
+            QStringList its;
+            for (const auto& h : m_history) its << (QString::number(h.ts) + '\t' + h.kw);
+            wr("hist/items", its.join('\n'));
+        }
+        // 管理密码：只校验不读回 → 存 PBKDF2 哈希；旧版遗留明文在此就地迁移
+        if (m_adminPassword.rfind("pbkdf2$", 0) != 0) {
+            const std::string h = cfgcrypto::HashPassword(m_adminPassword);
+            if (!h.empty()) m_adminPassword = h;
+        }
+        s.setValue("admin/password", QString::fromUtf8(m_adminPassword.c_str()));
+        s.setValue("meta/encVersion", 1);
     }
     s.sync();
 }
