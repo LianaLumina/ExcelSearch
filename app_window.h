@@ -4,98 +4,49 @@
 // 说明：本文件当前仍是「类内内联定义」形态；后续 B2..B11 逐步把各职能区的方法体
 //       移到对应 app_window_*.cpp，并在此处只保留声明。
 
-#include <QApplication>
-#include <QWidget>
-#include <QVBoxLayout>
-#include <QHBoxLayout>
-#include <QLabel>
-#include <QPushButton>
-#include <QLineEdit>
-#include <QTableWidget>
-#include <QHeaderView>
-#include <QAbstractItemView>
-#include <QFrame>
-#include <QMouseEvent>
-#include <QWindow>
-#include <QStackedWidget>
-#include <QListWidget>
-#include <QComboBox>
-#include <QCheckBox>
-#include <QSpinBox>
-#include <QScrollArea>
-#include <QButtonGroup>
-#include <QColorDialog>
-#include <QToolTip>
-#include <QMenu>
-#include <QTimer>
-#include <QAction>
-#include <QDialog>
-#include <QInputDialog>
-#include <QMessageBox>
-#include <QPlainTextEdit>
-#include <QTextBrowser>
-#include <QCryptographicHash>
-#include <QScrollBar>
-#include <QFile>
-#include <QKeyEvent>
-#include <QStyledItemDelegate>
-#include <QStyleOptionViewItem>
-#include <QIcon>
-#include <QSystemTrayIcon>
-#include <QCloseEvent>
-#include <QDesktopServices>
-#include <QUrl>
-#include <QPainterPath>
-#include <QLocalServer>
-#include <QLocalSocket>
-#include <QComboBox>
-#include <QDateTime>
-#include <QRadioButton>
-#include <rapidfuzz/fuzz.hpp>   // 列名模糊兜底校验（与核心 fuzzySearch 同一套评分）
-#include <QThread>
-#include <QEventLoop>
-#include <QSettings>
-#include <QStandardPaths>
-#include <QDir>
-#include <QPixmap>
-#include <QScreen>   // 说明书窗口最大化用 screen()->availableGeometry()
-#include <QColor>
+// —— 只保留「类声明本身需要」的头；其余（重头模板库、只在实现里用到的 Qt 头）已下沉到各 .cpp ——
+// B12 的目的：不再让每个 .cpp 都被 rapidfuzz / 各 reader / dialogs / widgets / manual_window 拖住。
+#include <QWidget>            // 基类
 #include <QString>
-#include <QPainter>
-#include <QVariantAnimation>
-#include <QEasingCurve>
-#include <QGraphicsOpacityEffect>
-#include <QPointer>
-#include <QEnterEvent>
+#include <QStringList>        // allHeaderNames() 按值返回
+#include <QColor>             // m_accent 等按值成员
+#include <QIcon>              // appIconIsResource() 内联体
+#include <QColorDialog>       // pickCustomAccent() 内联体
+#include <QToolTip>           // showHitTip() 内联体
+#include <QCursor>            // showHitTip() 内联体（QCursor::pos）
+#include <QSystemTrayIcon>    // trayActive() 内联体（isVisible）
 #include <functional>
-#include <cmath>
-#include <vector>
 #include <string>
-#include <filesystem>
-#include <fstream>
-#include <iterator>
-#include <set>
+#include <vector>
 #include <map>
-#include <tuple>
-#include <algorithm>
-#include <ctime>
-#include <cstring>
+#include <utility>
+#include "common.h"           // T()
+#include "search_engine.h"    // SearchEngine / SearchResult 按值成员
+#include "data_model.h"       // MarkStore / HistItem / CardDef / PageDef / SecDef / RowKey 按值成员
+#include "loading.h"          // 头文件内联体用到 LoadWorker/ProbeWorker 与 readInventory 等（.cpp 各自按需再 include）
+#include "manual_window.h"    // demoManualPixmap/manualNavReport 的返回类型与 manualText/manualHash（内联体用到）
+#include "dialogs.h"          // CloseDialog/PasswordDialog：内联体里有按值构造（demoCloseDialogPixmap 等在 .cpp）
+#include <QLineEdit>          // demoSearch() 内联体
+#include <QCheckBox>          // 通用设置内联体
+#include <QComboBox>          // 智能列/历史设置内联体
+#include <QRadioButton>       // 共享/筛选模式内联体
+#include <QStackedWidget>     // 页面栈内联体
+#include <QMenu>              // 托盘菜单内联体
+#include <QButtonGroup>       // 单选组内联体
+#include <QDateTime>          // 内联体里的时间处理
+#include <QFile>
+#include <QDir>
 
-#include "search_engine.h"
-#include "xlsx_reader.h"
-#include "xls_reader.h"
-#include "csv_reader.h"
-#include "docx_reader.h"
-#include "xse_codec.h"
-#include "miniz.h"
-#include "common.h"
-#include "theme.h"
-#include "animations.h"
-#include "widgets.h"
-#include "dialogs.h"
-#include "manual_window.h"
-#include "data_model.h"
-#include "loading.h"
+// 以下类型只以「指针 / 引用」出现在类声明里 → 前向声明即可，不必拉进它们的完整头文件（这就是提速的关键）
+class QLabel; class QLineEdit; class QPushButton; class QCheckBox; class QFrame;
+class QScrollArea; class QSpinBox; class QButtonGroup; class QRadioButton; class QComboBox;
+class QListWidget; class QTableWidget; class QStackedWidget; class QPlainTextEdit;
+class QMenu; class QTimer; class QVariantAnimation; class QGraphicsOpacityEffect;
+class QAbstractItemView; class QAction; class QScrollBar; class QPixmap;
+class QCloseEvent; class QMouseEvent; class QResizeEvent;
+class QListWidgetItem; class QTableWidgetItem;
+class ManualDialog; class WinBtn; class FolderBtn; class CardHeader; class LoadBar;
+class CollapseCard; class StateTint; class LoadWorker; class ProbeWorker;
 
 // ============================================================================
 // 控件动效总纲（V0.3.2 新增）

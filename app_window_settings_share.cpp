@@ -2,6 +2,7 @@
 // 共享模式：UNC 数据源（只读）+ 连通性探测（worker，避免 UNC 阻塞 UI）+ 路径规范化 + 强制重载；
 // 附加加密：.xse 附加密码的启用与保存；两者共同构成设置页的「共享设置」「加密设置」两张子卡。
 #include "app_window.h"
+#include <QMessageBox>
 
 // 自检钩子：--share <UNC 路径> 打开共享模式并保存；--shareoff 关回离线模式
 void AppWindow::applyShareCli(const QString& path, bool off) {

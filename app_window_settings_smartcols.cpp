@@ -2,6 +2,7 @@
 // 组成：列选择评分 buildColMap / 表头收集 / 输入解析（内建元数据 → 表头包含 → rapidfuzz 兜底）/
 //       取值 cellValueFor / 设置页「智能列设置」子卡与增删改动作。
 #include "app_window.h"
+#include <rapidfuzz/fuzz.hpp>
 
 // 智能列：按「表头包含关键词 + 精确匹配加权」选列（对齐原版 BuildColMap 的评分规则）
 std::map<std::pair<std::string, std::string>, int>  AppWindow::buildColMap(const std::string& target) const {

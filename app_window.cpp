@@ -7,6 +7,8 @@
 // ⚠️ 本文件里 startSystemMove / startSystemResize / toggleMax 是无边框窗口的命脉（见各函数注释），
 //    改窗口行为前先读 apply()/buildUi() 与 docs/回迁标注.md 里关于无边框窗口的条目。
 #include "app_window.h"
+#include <QDesktopServices>
+#include <QStandardPaths>
 
 AppWindow::AppWindow() {
     setWindowFlags(Qt::FramelessWindowHint | Qt::Window);

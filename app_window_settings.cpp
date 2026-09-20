@@ -3,6 +3,7 @@
 //       设置页外壳 makeSettingsPage（左分区列表 + 右内容栈）、关于页 makeAboutSec、
 //       预留实用工具页 makeUtilPage 与注册入口 registerUtilTool（kEnableUtilTab=false，当前不启用）。
 #include "app_window.h"
+#include <QDesktopServices>
 
 // 设置页分区切换：进入「高级设置」若未解锁则显示解锁层；离开则重新上锁
 void AppWindow::onSettingsSectionChanged(int row) {
