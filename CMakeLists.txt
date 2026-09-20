@@ -32,6 +32,7 @@ add_executable(excel_search
     app_window_settings_general.cpp     # B7：通用设置页与搜索设置子卡（从 app_window.h 搬出）
     app_window_config.cpp                # B8：配置持久化与数据加载流水线（从 app_window.h 搬出）
     config_crypto.cpp                    # 加固：config.ini 敏感值加密 + 管理密码哈希（DPAPI + AES-GCM）
+    app_window_search.cpp                # B9：搜索页与结果表（从 app_window.h 搬出）
 loading.cpp
 data_model.cpp
 manual_window.cpp
