@@ -658,6 +658,12 @@ public:
     }
 
     void goAdvSection(int i) { if (m_advNavList) m_advNavList->setCurrentRow(i); }
+    // 自检钩子：--advpwd <口令>：把口令填进解锁框并尝试解锁（用来验证"迁移成哈希后仍能正常解锁"）
+    void demoAdvUnlock(const char* pw) {
+        if (!m_advPwdEdit) return;
+        m_advPwdEdit->setText(QString::fromUtf8(pw));
+        tryAdvUnlock();
+    }
     // 高级设置的门禁栈（解锁层 ↔ 真实内容）切换（实现见 app_window_settings_advanced.cpp）
     void advGateAnim();
     // 设置页分区切换：进入「高级设置」若未解锁则显示解锁层；离开则重新上锁（实现见 app_window_settings.cpp）

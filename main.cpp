@@ -195,6 +195,7 @@ int main(int argc, char** argv) {
     QString midMs;                     // 截图用：--mid <毫秒> 只等指定时长（抓动画中间帧）
     bool reloadBeforeShot = false;     // 截图用：--reload 截图前再触发一次"重新加载"
     QString shareSpec; bool shareSet = false, shareOff = false;
+    QString advPwd;   // --advpwd <口令>：自检用，填入口令并尝试解锁高级设置
     QString hookOut;   // --out <file>：自检钩子结果写文件（GUI 子系统无控制台）
     bool migrateNow = false;   // --migrate：强制跑一次旧版设置搬迁
     bool cfgSelfTest = false;  // --cfgselftest：配置加密/口令哈希自测（纯内存）
@@ -236,6 +237,7 @@ int main(int argc, char** argv) {
         if (std::strcmp(argv[i], "--reload") == 0) reloadBeforeShot = true;
         if (std::strcmp(argv[i], "--no-anim") == 0) g_noAnim = true;   // 等价 UI_PROTO_NO_ANIM=1
         if (std::strcmp(argv[i], "--cfgselftest") == 0) cfgSelfTest = true;
+        if (std::strcmp(argv[i], "--advpwd") == 0 && i + 1 < argc) advPwd = QString::fromLocal8Bit(argv[i + 1]);
     }
     // 自检钩子：配置加固自测（纯内存，不碰 config.ini，也不受单实例闸门影响）
     if (cfgSelfTest) {
@@ -359,6 +361,8 @@ int main(int argc, char** argv) {
         else if (toCloseDlg) { w.demoCloseDialogPixmap().save(shot); return 0; }   // 关闭方式对话框
         else if (toManual) { w.demoManualPixmap().save(shot); return 0; }   // 使用说明书窗口
         else if (toAdv) { w.goAdvPage(advSec >= 0); if (advSec >= 0) w.goAdvSection(advSec); }   // 截图用：无 --advsec 时停在解锁层
+        // 自检用：走"真实密码解锁"路径（验证管理密码迁移成哈希后仍能解锁，见 tryAdvUnlock 注释）
+        if (!advPwd.isEmpty()) w.demoAdvUnlock(advPwd.toUtf8().constData());
         else if (shotKwSet) { if (!shotKw.isEmpty()) w.demoSearch(shotKw.toUtf8().constData()); }   // --kw "" → 空输入框(看占位符)
         else w.demoSearch("工日");
         if (tabIdx >= 0) w.demoTab(tabIdx);   // 可选：切到指定顶级标签

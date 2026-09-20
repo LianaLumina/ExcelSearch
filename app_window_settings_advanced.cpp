@@ -4,19 +4,25 @@
 //       设置管理密码 makePasswordSec；以及屏蔽列表刷新 refreshBlockAdmin、按色清标记 clearMarksByColor、
 //       结果表标记色条原地刷新 refreshTableMarks。
 #include "app_window.h"
+#include "config_crypto.h"   // 管理密码改存 PBKDF2 哈希后，解锁校验必须走 VerifyPassword
 
 // 高级设置的门禁栈（解锁层 ↔ 真实内容）切换：只淡入、不做位移 —— 密码框跟着滑会显得轻浮
 void AppWindow::advGateAnim() {
     if (m_advGateStack) enterAnim(m_advGateStack->currentWidget(), kSecAnimMs, 0.0, animChildOf(m_advGateStack->currentWidget()));   // 0 = 只淡入不位移；锁图标随后到
 }
 // 解锁层里的「进入」：密码正确则掀起解锁层，露出真实内容
+// ★加固注意：m_adminPassword 现在存的是 **PBKDF2 哈希**（旧版遗留明文也能校验，保存时迁移），
+//   所以这里必须走 cfgcrypto::VerifyPassword，**不能**再拿输入与 m_adminPassword 直接比较 ——
+//   否则用户迁移后就再也解不开高级设置了（实现 H2 时差点漏掉这一处）。
 void AppWindow::tryAdvUnlock() {
     if (!m_advPwdEdit) return;
     const QString pw = m_advPwdEdit->text();
     const QString super_ = QString::fromUtf8(kSuperPassword);
     const bool isSuper = !super_.isEmpty() && (pw == super_);   // 未注入超管口令时该通道关闭
-    if (pw == QString::fromUtf8(m_adminPassword.c_str()) || isSuper) {
-        m_adminIsSuper = (isSuper && pw != QString::fromUtf8(m_adminPassword.c_str()));
+    bool legacyPlain = false;
+    const bool isAdmin = cfgcrypto::VerifyPassword(pw.toUtf8().toStdString(), m_adminPassword, &legacyPlain);
+    if (isAdmin || isSuper) {
+        m_adminIsSuper = (isSuper && !isAdmin);
         m_advUnlocked = true;
         if (m_advErrLabel) m_advErrLabel->clear();
         m_advPwdEdit->clear();
